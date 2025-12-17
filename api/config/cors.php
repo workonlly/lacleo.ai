@@ -9,6 +9,7 @@ return [
         'https://app.lacleo.test',
         'http://localhost:3000',
         'https://local-accounts.lacleo.test',
+        'https://local-api.lacleo.test',
     ],
     'allowed_headers' => ['*'],
     'exposed_headers' => [

@@ -43,7 +43,8 @@ class GenerateEmbeddings extends Command
         // Since we only store in Elastic, we might just loop through SQL records and update Elastic.
         // NOTE: Ideally we should check if 'embedding' exists in Elastic, but for simplicity we iterate DB.
 
-        $query = $modelClass::query();
+        // Use newQuery() on an instance to bypass HasElasticIndex::query() override
+        $query = (new $modelClass)->newQuery();
 
         $count = 0;
 

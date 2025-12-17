@@ -15,9 +15,10 @@ import {
 } from "@/features/searchTable/slice/contactInfoSlice"
 import { selectSearchTableView, setView } from "@/interface/searchTable/view"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { Building2, Save, Search, UsersRound } from "lucide-react"
+import { Building2, Save, Search, UsersRound, PanelLeft } from "lucide-react"
 import { useDispatch, useSelector } from "react-redux"
-import { Outlet } from "react-router-dom"
+import { Outlet, useLocation } from "react-router-dom"
+import { useState, useEffect } from "react"
 import NavAnchor from "../utils/navAnchor"
 
 const SearchLayout = () => {
@@ -31,6 +32,18 @@ const SearchLayout = () => {
   const contactInfoContact = useSelector(selectContactInfoContact)
   const contactInfoCompany = useSelector(selectContactInfoCompany)
   const { hideCompanyActions, hideContactFields } = useSelector(selectContactInfoFlags)
+
+  // Local state for sidebar visibility
+  const [isFiltersOpen, setIsFiltersOpen] = useState(true)
+  const location = useLocation()
+
+  // Auto-hide filters if navigating from AI Search logic
+  useEffect(() => {
+    const s = (location.state as Record<string, unknown> | null) || null
+    if (s && "fromAi" in s && Boolean((s as { fromAi?: boolean }).fromAi)) {
+      setIsFiltersOpen(false)
+    }
+  }, [location.state])
 
   const renderTopControls = () => (
     <div className="my-3 flex items-center justify-between gap-3">
@@ -98,29 +111,45 @@ const SearchLayout = () => {
         </div>
       ) : (
         <>
-          <div className="relative border-b bg-white dark:border-gray-800 dark:bg-background dark:from-gray-950 dark:to-gray-900/50">
-            <nav className="flex space-x-3">
-              <NavAnchor
-                to="contacts"
-                activePaths={["/app/search/contacts"]}
-                activeClassName="group py-3.5 gap-2 space-x-2 border-b-2 px-1 text-sm inline-flex items-center border-primary text-primary font-semibold"
-                className="group inline-flex items-center gap-2 space-x-2 border-b-2 border-transparent px-1 py-3.5 text-sm font-normal text-muted-foreground hover:text-foreground"
+          <div className="relative z-20 flex items-center justify-between border-b bg-white px-2 dark:border-gray-800 dark:bg-background dark:from-gray-950 dark:to-gray-900/50">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsFiltersOpen((prev) => !prev)}
+                className={`group flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                  isFiltersOpen ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"
+                }`}
               >
-                <UsersRound className="size-4 group-[.font-semibold]:stroke-[2.5]" /> Contact
-              </NavAnchor>
-              <NavAnchor
-                to="companies"
-                activePaths={["/app/search/companies"]}
-                activeClassName="group py-3.5 gap-2 space-x-2 border-b-2 px-1 text-sm inline-flex items-center border-primary text-primary font-semibold"
-                className="group inline-flex items-center gap-2 space-x-2 border-b-2 border-transparent px-1 py-3.5 text-sm font-normal text-muted-foreground hover:text-foreground"
-              >
-                <Building2 className="size-4 group-[.font-semibold]:stroke-[2.5]" /> Company
-              </NavAnchor>
-            </nav>
+                <PanelLeft className="size-4" />
+                <span className="hidden sm:inline">{isFiltersOpen ? "Hide Filters" : "Show Filters"}</span>
+              </button>
+              <div className="h-4 w-px bg-gray-200 dark:bg-gray-800" />
+              <nav className="flex space-x-3">
+                <NavAnchor
+                  to="contacts"
+                  activePaths={["/app/search/contacts"]}
+                  activeClassName="group py-3.5 gap-2 space-x-2 border-b-2 px-1 text-sm inline-flex items-center border-primary text-primary font-semibold"
+                  className="group inline-flex items-center gap-2 space-x-2 border-b-2 border-transparent px-1 py-3.5 text-sm font-normal text-muted-foreground hover:text-foreground"
+                >
+                  <UsersRound className="size-4 group-[.font-semibold]:stroke-[2.5]" /> Contact
+                </NavAnchor>
+                <NavAnchor
+                  to="companies"
+                  activePaths={["/app/search/companies"]}
+                  activeClassName="group py-3.5 gap-2 space-x-2 border-b-2 px-1 text-sm inline-flex items-center border-primary text-primary font-semibold"
+                  className="group inline-flex items-center gap-2 space-x-2 border-b-2 border-transparent px-1 py-3.5 text-sm font-normal text-muted-foreground hover:text-foreground"
+                >
+                  <Building2 className="size-4 group-[.font-semibold]:stroke-[2.5]" /> Company
+                </NavAnchor>
+              </nav>
+            </div>
           </div>
 
           <div className="flex flex-row">
-            <div className="w-80 shrink-0 overflow-y-auto">
+            <div
+              className={`shrink-0 overflow-y-auto transition-all duration-300 ease-in-out ${
+                isFiltersOpen ? "w-80 opacity-100" : "w-0 overflow-hidden opacity-0"
+              }`}
+            >
               <Filters />
             </div>
             {showResults ? (

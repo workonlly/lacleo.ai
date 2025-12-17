@@ -275,8 +275,8 @@ export function DataTable<T>({
                   <TableCell colSpan={columns.length + (showCheckbox ? 1 : 0)} className="h-32 text-center">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Search className="size-8 text-muted-foreground/80" />
-                      <p className="text-sm text-muted-foreground">No results found</p>
-                      {!!searchValue && <p className="text-xs text-muted-foreground/80">Try adjusting your search or filters</p>}
+                      <p className="text-sm text-muted-foreground">No results found matching your criteria</p>
+                      <p className="text-xs text-muted-foreground/80">Try broadening your search or removing some filters.</p>
                     </div>
                   </TableCell>
                 </TableRow>

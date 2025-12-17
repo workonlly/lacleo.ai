@@ -22,11 +22,12 @@ import { Eye, Mail, Phone, User2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filterSlice"
-import { setLastResultCount, selectSemanticQuery } from "../aisearch/slice/searchslice"
+import { setLastResultCount, selectSemanticQuery, selectSearchQuery, startSearch } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery, useCompanyLogoQuery } from "./slice/apiSlice"
 import { openContactInfoForContact } from "./slice/contactInfoSlice"
 import { buildSearchQuery } from "@/app/utils/buildSearchQuery"
+import { useDebounce } from "@/app/hooks/useDebounce"
 
 const ContactCompanyCell = ({ row }: { row: ContactAttributes }) => {
   const normalizedDomain = (row.website || "")
@@ -37,10 +38,12 @@ const ContactCompanyCell = ({ row }: { row: ContactAttributes }) => {
   const logoUrl = logoData?.logo_url || null
   return (
     <div className="flex items-center gap-2">
-      <Avatar className="flex size-6 shrink-0 items-center justify-center rounded-full border">
-        {logoUrl ? <img src={logoUrl} alt={row.company || "Company logo"} className="size-4" /> : <User2 className="size-4 text-primary" />}
-      </Avatar>
-      <div>{row.company || <span className="text-sm text-muted-foreground">Not Available</span>}</div>
+      {logoUrl ? (
+        <Avatar className="flex size-6 items-center justify-center rounded-full border">
+          <img src={logoUrl} alt={row.company || "Company logo"} className="size-4" />
+        </Avatar>
+      ) : null}
+      <span className="break-words">{row.company || "N/A"}</span>
     </div>
   )
 }
@@ -56,7 +59,23 @@ export function ContactsTable() {
     total: 0,
     lastPage: 1
   })
-  const [queryValue, setQueryValue] = useState("")
+
+  // Sync with global search query
+  const globalSearchQuery = useAppSelector(selectSearchQuery)
+  const [queryValue, setQueryValue] = useState(globalSearchQuery)
+
+  // Keep local state in sync with global (if updated elsewhere)
+  useEffect(() => {
+    setQueryValue(globalSearchQuery)
+  }, [globalSearchQuery])
+
+  const debouncedQueryValue = useDebounce(queryValue, 500)
+
+  const handleSearchChange = (val: string) => {
+    setQueryValue(val)
+    dispatch(startSearch(val))
+  }
+
   const [sortSelected, setSortSelected] = useState<string[]>([])
   const [infoContact, setInfoContact] = useState<ContactAttributes | null>(null)
   const [isExportOpen, setIsExportOpen] = useState(false)
@@ -92,11 +111,12 @@ export function ContactsTable() {
 
   const queryParams = useMemo(
     () => ({
-      ...(queryValue && { searchTerm: queryValue }),
+      // Only include search term if it is valid (>= 2 chars) to avoid 422 errors
+      ...(debouncedQueryValue && debouncedQueryValue.length >= 2 && { searchTerm: debouncedQueryValue }),
       ...(semanticQuery && { semantic_query: semanticQuery }),
       ...(Object.keys(filterDsl).length > 0 && { filter_dsl: filterDsl })
     }),
-    [queryValue, semanticQuery, filterDsl]
+    [debouncedQueryValue, semanticQuery, filterDsl]
   )
 
   const searchParams = useMemo(
@@ -358,7 +378,7 @@ export function ContactsTable() {
             onSort={setSortSelected}
             sortSelected={sortSelected}
             searchPlaceholder="Search contacts..."
-            onSearch={setQueryValue}
+            onSearch={handleSearchChange}
             searchValue={queryValue}
             pagination={pagination}
             onPageChange={handlePageChange}

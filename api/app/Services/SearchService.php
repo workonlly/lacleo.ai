@@ -45,11 +45,7 @@ class SearchService
             $modelClass = $this->getModelClass($type);
             $builder = $modelClass::elastic();
 
-            $index = match ($type) {
-                'company' => config('services.elastic.indices.company'),
-                'contact' => config('services.elastic.indices.contact'),
-                default => throw new InvalidArgumentException("Invalid model type: {$type}"),
-            };
+            $index = (new $modelClass())->elasticIndex();
             $builder->index($index);
 
             // Apply boolean filters (DSL)
@@ -116,11 +112,7 @@ class SearchService
     ): array {
         $modelClass = $this->getModelClass($type);
         $builder = $modelClass::elastic();
-        $index = match ($type) {
-            'company' => config('services.elastic.indices.company'),
-            'contact' => config('services.elastic.indices.contact'),
-            default => throw new InvalidArgumentException("Invalid model type: {$type}"),
-        };
+        $index = (new $modelClass())->elasticIndex();
         $builder->index($index);
         $this->applyFilters($builder, $type, $filterDsl);
         $this->applySearchQuery($builder, $type, $modelClass::globalSearchFields(), $query);
@@ -273,7 +265,6 @@ class SearchService
         }
 
         // Industries
-        // Industries
         if (!empty($filters['industries'])) {
             $inds = $filters['industries'];
             $include = array_values(array_filter(array_map('trim', (array) ($inds['include'] ?? [])), 'strlen'));
@@ -286,6 +277,7 @@ class SearchService
                     $shouldStart = [];
                     $shouldStart[] = ['exists' => ['field' => 'industry']];
                     $shouldStart[] = ['exists' => ['field' => 'industries']];
+                    $shouldStart[] = ['exists' => ['field' => 'business_category']];
                     $filterClauses[] = ['bool' => ['should' => $shouldStart, 'minimum_should_match' => 1]];
                 } else {
                     $shouldStart = [];
@@ -297,6 +289,7 @@ class SearchService
                 if ($type === 'company') {
                     $mustNot[] = ['exists' => ['field' => 'industry']];
                     $mustNot[] = ['exists' => ['field' => 'industries']];
+                    $mustNot[] = ['exists' => ['field' => 'business_category']];
                 } else {
                     $mustNot[] = ['exists' => ['field' => 'company_obj.industry']];
                     $mustNot[] = ['exists' => ['field' => 'company_obj.industries']];
@@ -308,7 +301,7 @@ class SearchService
                 if ($type === 'company') {
                     $should = [];
                     $should[] = ['terms' => ['industry' => $include]];
-                    $should[] = ['terms' => ['industries' => $include]]; // Added industries array field
+                    $should[] = ['terms' => ['industries' => $include]];
                     $should[] = ['terms' => ['business_category' => $include]];
                     $filterClauses[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
                 } else {
@@ -324,7 +317,7 @@ class SearchService
                 if ($type === 'company') {
                     $shouldExclude = [];
                     $shouldExclude[] = ['terms' => ['industry' => $exclude]];
-                    $shouldExclude[] = ['terms' => ['industries' => $exclude]]; // Added industries array field
+                    $shouldExclude[] = ['terms' => ['industries' => $exclude]];
                     $shouldExclude[] = ['terms' => ['business_category' => $exclude]];
                     $mustNot[] = ['bool' => ['should' => $shouldExclude, 'minimum_should_match' => 1]];
                 } else {
@@ -1898,7 +1891,7 @@ class SearchService
         }
 
         $builder = \App\Models\Company::elastic();
-        $builder->index(config('services.elastic.indices.company'));
+        $builder->index((new \App\Models\Company())->elasticIndex());
 
         $must = [];
         $mustNot = [];
@@ -1989,12 +1982,14 @@ class SearchService
                         if (!empty($include)) {
                             $should = [];
                             $should[] = ['terms' => ['industry' => $include]];
+                            $should[] = ['terms' => ['industries' => $include]];
                             $should[] = ['terms' => ['business_category' => $include]];
                             $filterClauses[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
                         }
                         if (!empty($exclude)) {
                             $should = [];
                             $should[] = ['terms' => ['industry' => $exclude]];
+                            $should[] = ['terms' => ['industries' => $exclude]];
                             $should[] = ['terms' => ['business_category' => $exclude]];
                             $mustNot[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
                         }

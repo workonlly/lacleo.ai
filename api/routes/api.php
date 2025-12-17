@@ -23,7 +23,7 @@ Route::prefix('v1')->middleware([\App\Http\Middleware\RequestLogMiddleware::clas
     Route::get('/filters', [SearchController::class, 'getFilters']);
     Route::get('/filter/values', [SearchController::class, 'getFilterValues']);
     Route::get('/search/{type}', [SearchController::class, 'search'])->middleware(app()->environment(['testing', 'local']) ? [] : 'throttle:search');
-    Route::post('/search/contacts', [SearchController::class, 'searchContacts'])->middleware(app()->environment(['testing', 'local']) ? [] : 'throttle:search');
+
 
     Route::post('/ai/generate-filters', [AiController::class, 'generateFilters'])
         ->middleware(array_filter([

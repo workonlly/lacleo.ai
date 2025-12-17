@@ -22,6 +22,7 @@ import { useGetFiltersQuery } from "../filters/slice/apiSlice"
 import { useTranslateQueryMutation } from "../searchTable/slice/apiSlice"
 import { addSelectedItem, resetFilters, importFiltersFromDSL } from "../filters/slice/filterSlice"
 import { IFilterGroup } from "@/interface/filters/filterGroup"
+import { FILTER_KEYS, FILTER_LABELS } from "../filters/utils/constants"
 
 const LOADING_PHRASES: string[] = [
   "Curating filters for your search…",
@@ -32,11 +33,10 @@ const LOADING_PHRASES: string[] = [
   "Refining your filters…",
   "Analyzing search parameters…",
   "Narrowing it down for you…",
-  "Exploring all possibilities…",
-  "Gathering tailored suggestions…",
-  "Almost there…",
-  "Finalizing your matches…"
+  "Exploring all possibilities…"
 ]
+
+type BackendCustomItem = { label?: string; value: string; type?: string }
 
 const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) => {
   const dispatch = useDispatch()
@@ -64,21 +64,39 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
   const mountedRef = useRef(false)
   const initialQueryRef = useRef(initialQuery)
   const reduxSearchQueryRef = useRef(reduxSearchQuery)
-  const processQueryRef = useRef<(q: string, isInitial?: boolean) => void>(() => { })
+  const messagesRef = useRef<Message[]>([])
+  const lastResultCountRef = useRef<number | null>(typeof lastResultCount === "number" ? lastResultCount : null)
+  const processQueryRef = useRef<(q: string, isInitial?: boolean) => void>(() => {})
 
-  const mapBackendFiltersToCriteria = useCallback((filters: Record<string, unknown>): SearchCriterion[] => {
+  const mapBackendFiltersToCriteria = useCallback((filters: Record<string, unknown>, customFilters: BackendCustomItem[] = []): SearchCriterion[] => {
     const out: SearchCriterion[] = []
 
-    const push = (id: string, label: string, value: string) => {
+    const push = (id: string, label: string, value: string, isCustom = false) => {
       if (value && value.trim()) {
         out.push({ id, label, value: value.trim(), checked: true })
       }
     }
 
+    // Helper to extract values from potential { include: [] } structure or raw value
+    const extractValues = (val: unknown): string[] => {
+      if (!val) return []
+      if (typeof val === "string") return [val]
+      if (Array.isArray(val)) return val.map(String)
+      if (typeof val === "object") {
+        const obj = val as { include?: unknown }
+        if (Array.isArray(obj.include)) return obj.include.map(String)
+        if (typeof obj.include === "string") return [obj.include]
+        // Fallback for simple key-value pairs if not using include
+        return []
+      }
+      return [String(val)]
+    }
+
     // Helper to format ranges
-    const formatRange = (val: { gte?: number; lte?: number; min?: number; max?: number }): string => {
-      const gte = val.gte ?? val.min
-      const lte = val.lte ?? val.max
+    const formatRange = (val: unknown): string => {
+      const obj = (val || {}) as { gte?: number; lte?: number; min?: number; max?: number }
+      const gte = obj.gte ?? obj.min
+      const lte = obj.lte ?? obj.max
 
       const toKMB = (n: number) => {
         if (n >= 1_000_000_000) return `${n / 1_000_000_000}B`
@@ -92,39 +110,57 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
       return ""
     }
 
+    // Generic handler options
+    const HANDLERS: Record<string, (val: unknown) => void> = {
+      [FILTER_KEYS.JOB_TITLE]: (v) => extractValues(v).forEach((x) => push(FILTER_KEYS.JOB_TITLE, FILTER_LABELS[FILTER_KEYS.JOB_TITLE], x)),
+      [FILTER_KEYS.DEPARTMENTS]: (v) => extractValues(v).forEach((x) => push(FILTER_KEYS.DEPARTMENTS, FILTER_LABELS[FILTER_KEYS.DEPARTMENTS], x)),
+      [FILTER_KEYS.SENIORITY]: (v) => extractValues(v).forEach((x) => push(FILTER_KEYS.SENIORITY, FILTER_LABELS[FILTER_KEYS.SENIORITY], x)),
+      [FILTER_KEYS.COMPANY_NAME]: (v) => extractValues(v).forEach((x) => push(FILTER_KEYS.COMPANY_NAME, FILTER_LABELS[FILTER_KEYS.COMPANY_NAME], x)),
+      [FILTER_KEYS.EMPLOYEE_COUNT]: (v) => push(FILTER_KEYS.EMPLOYEE_COUNT, FILTER_LABELS[FILTER_KEYS.EMPLOYEE_COUNT], formatRange(v)),
+      [FILTER_KEYS.REVENUE]: (v) => push(FILTER_KEYS.REVENUE, FILTER_LABELS[FILTER_KEYS.REVENUE], formatRange(v)),
+      [FILTER_KEYS.EXPERIENCE]: (v) => push(FILTER_KEYS.EXPERIENCE, FILTER_LABELS[FILTER_KEYS.EXPERIENCE], formatRange(v)),
+      [FILTER_KEYS.CONTACT_LOCATION]: (v) => {
+        const loc = v as { country?: string[] | string; state?: string[] | string; city?: string[] | string } | unknown
+        // Handle complex location object if strictly structured
+        if (loc && typeof loc === "object" && !("include" in (loc as Record<string, unknown>))) {
+          const l = loc as { country?: unknown; state?: unknown; city?: unknown }
+          extractValues(l.country).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location (Country)", x))
+          extractValues(l.state).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location (State)", x))
+          extractValues(l.city).forEach((x) => push(FILTER_KEYS.CONTACT_CITY, "Location (City)", x))
+        } else {
+          // Fallback for flat include
+          extractValues(v).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location", x))
+        }
+      },
+      [FILTER_KEYS.TECHNOLOGIES]: (v) => extractValues(v).forEach((x) => push(FILTER_KEYS.TECHNOLOGIES, FILTER_LABELS[FILTER_KEYS.TECHNOLOGIES], x)),
+      [FILTER_KEYS.COMPANY_KEYWORDS]: (v) =>
+        extractValues(v).forEach((x) => push(FILTER_KEYS.COMPANY_KEYWORDS, FILTER_LABELS[FILTER_KEYS.COMPANY_KEYWORDS], x)),
+      [FILTER_KEYS.INDUSTRY]: (v) => extractValues(v).forEach((x) => push(FILTER_KEYS.INDUSTRY, FILTER_LABELS[FILTER_KEYS.INDUSTRY], x))
+    }
+
+    // Process standard filters
     for (const [key, val] of Object.entries(filters)) {
       if (!val) continue
 
-      if (key === "title" || key === "job_title") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("job_title", "Job Title", String(v)))
-      } else if (key === "departments") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("departments", "Department", String(v)))
-      } else if (key === "seniority") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("seniority_level", "Seniority", String(v)))
-      } else if (key === "company_names" || key === "company") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("company_brand", "Company", String(v)))
-      } else if (key === "company_size" || key === "company.employee_count" || key === "employee_count") {
-        push("employee_count", "Employee Count", formatRange(val as { gte?: number; lte?: number }))
-      } else if (key === "revenue" || key === "company.revenue" || key === "annual_revenue") {
-        push("company_revenue", "Company Revenue", formatRange(val as { gte?: number; lte?: number }))
-      } else if (key === "years_experience" || key === "years_of_experience") {
-        push("years_of_experience", "Experience", formatRange(val as { gte?: number; lte?: number }))
-      } else if (key === "location") {
-        // Handle nested location object { country: [], state: [], city: [] }
-        const loc = val as { country?: string[]; state?: string[]; city?: string[] }
-        if (loc.country) loc.country.forEach((v) => push("company_location", "Location (Country)", v))
-        if (loc.state) loc.state.forEach((v) => push("company_location", "Location (State)", v))
-        if (loc.city) loc.city.forEach((v) => push("contact_city", "Location (City)", v))
-      } else if (key === "location.country") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("company_location", "Location", String(v)))
-      } else if (key === "skills" || key === "technologies") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("technologies", "Skills/Tech", String(v)))
-      } else if (key === "company_keywords") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("company_keywords", "Keywords", String(v)))
-      } else if (key === "industry" || key === "company.industry" || key === "industries") {
-        ; (Array.isArray(val) ? val : [val]).forEach((v) => push("industry", "Industry", String(v)))
+      // Normalize legacy keys to constants if needed
+      let normKey = key
+      if (key === "company") normKey = FILTER_KEYS.COMPANY_NAME
+      if (key === "company.revenue") normKey = FILTER_KEYS.REVENUE
+      if (key === "company.employee_count") normKey = FILTER_KEYS.EMPLOYEE_COUNT
+      // Map company_names explicitly to COMPANY_NAME constant
+      if (key === "company_names") normKey = FILTER_KEYS.COMPANY_NAME
+
+      if (HANDLERS[normKey]) {
+        HANDLERS[normKey](val)
+      } else if (HANDLERS[key]) {
+        HANDLERS[key](val)
       }
     }
+
+    // Process Custom / Dynamic Filters
+    customFilters.forEach((cf) => {
+      push(FILTER_KEYS.CUSTOM, cf.label || "Custom", cf.value, true)
+    })
 
     if (out.length === 0) {
       return [{ id: "general", label: "Search Type", value: "General Search", checked: true }]
@@ -142,6 +178,14 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
     setMessages((prev) => [...prev, newMessage])
     return newMessage
   }, [])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  useEffect(() => {
+    lastResultCountRef.current = typeof lastResultCount === "number" ? lastResultCount : null
+  }, [lastResultCount])
 
   const disablePreviousConfirmations = useCallback(() => {
     setMessages((prev) =>
@@ -197,8 +241,9 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
                   item: { id: c.value, name: c.value, type: "include" }
                 })
               )
-            } else if (c.id === "company_keywords") {
-              // Ensure keywords are added even if not matched by ID lookup (since it uses sub-filter IDs)
+            } else if (c.id === "company_keywords" || c.id === FILTER_KEYS.CUSTOM) {
+              // Ensure keywords and custom dynamic chips are added to company_keywords
+              // This leverages the unified search power for loose concepts
               dispatch(
                 addSelectedItem({
                   sectionId: "company_keywords",
@@ -212,13 +257,13 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
         if (!mountedRef.current) return
 
         if (inferredEntity === "contacts") {
-          navigate("/app/search/contacts")
+          navigate("/app/search/contacts", { state: { fromAi: true } })
         } else if (inferredEntity === "companies") {
-          navigate("/app/search/companies")
+          navigate("/app/search/companies", { state: { fromAi: true } })
         } else {
           const hasContactFilters = criteria.some((c) => ["job_title", "departments", "seniority"].includes(c.id))
-          if (hasContactFilters) navigate("/app/search/contacts")
-          else navigate("/app/search/companies")
+          if (hasContactFilters) navigate("/app/search/contacts", { state: { fromAi: true } })
+          else navigate("/app/search/companies", { state: { fromAi: true } })
         }
 
         dispatch(finishSearch())
@@ -267,17 +312,17 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
       setIsLoading(true)
 
       // Construct message history for the AI
-      // We need to map our local Message[] (which has IDs, timestamps, components) 
+      // We need to map our local Message[] (which has IDs, timestamps, components)
       // to the API's simple format { role, content }
-      const historyContext = messages
-        .filter(m => m.type === 'user' || m.type === 'ai')
-        .map(m => ({
-          role: m.type === 'user' ? 'user' : 'assistant',
+      const historyContext = (messagesRef.current || [])
+        .filter((m) => m.type === "user" || m.type === "ai")
+        .map((m) => ({
+          role: m.type === "user" ? "user" : "assistant",
           content: m.content
-        }));
+        }))
 
       // Append the new user query to the history
-      const newHistory = [...historyContext, { role: 'user', content: query }];
+      const newHistory = [...historyContext, { role: "user", content: query }]
 
       addMessage({
         type: "user",
@@ -287,12 +332,12 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
       try {
         const response = await translateQuery({
           messages: newHistory,
-          context: { lastResultCount: typeof lastResultCount === 'number' ? lastResultCount : null }
+          context: { lastResultCount: lastResultCountRef.current }
         }).unwrap()
 
         if (!mountedRef.current) return
 
-        const criteria = mapBackendFiltersToCriteria(response.filters)
+        const criteria = mapBackendFiltersToCriteria(response.filters, response.custom)
         setInferredEntity(response.entity)
         setCurrentCriteria(criteria)
 
@@ -317,11 +362,11 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
         for (const [key, val] of Object.entries(response.filters as Record<string, unknown>)) {
           if (!val) continue
           if (key === "title" || key === "job_title") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "job_title", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "job_title", String(v)))
           } else if (key === "departments") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "departments", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "departments", String(v)))
           } else if (key === "seniority") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "seniority", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "seniority", String(v)))
           } else if (key === "years_experience" || key === "years_of_experience") {
             setRange(dsl.contact, "years_of_experience", val)
           } else if (key === "location") {
@@ -330,24 +375,23 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
             if (loc.state) loc.state.forEach((v) => ensureInclude(dsl.company, "locations", v))
             if (loc.city) loc.city.forEach((v) => ensureInclude(dsl.contact, "city", v))
           } else if (key === "location.country") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "locations", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "locations", String(v)))
           } else if (key === "location.city" || key === "city") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "city", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.contact, "city", String(v)))
           } else if (key === "industry" || key === "company.industry" || key === "industries") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "industries", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "industries", String(v)))
           } else if (key === "skills" || key === "technologies" || key === "company.technologies") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "technologies", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "technologies", String(v)))
           } else if (key === "company_size" || key === "company.employee_count" || key === "employee_count") {
             setRange(dsl.company, "employee_count", val)
           } else if (key === "revenue" || key === "company.revenue" || key === "annual_revenue") {
             setRange(dsl.company, "annual_revenue", val)
           } else if (key === "company_keywords") {
-            ; (Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "company_keywords", String(v)))
+            ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "company_keywords", String(v)))
           } else if (key === "company_names" || key === "company") {
             // ...
           }
         }
-        dispatch(importFiltersFromDSL(dsl))
 
         // Dispatch that criteria processing is finished
         dispatch(finishCriteriaProcessing())
@@ -383,7 +427,30 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
         if (mountedRef.current) {
           addMessage({
             type: "ai",
-            content: "Sorry, I encountered an error interpreting your request. Please try rephrasing."
+            content: "I encountered an error connecting to the AI service. Switching to general keyword search..."
+          })
+
+          // Fallback: heuristic to guess entity type if AI failed
+          const isContactQuery =
+            /(person|people|member|contact|email|phone|who|manager|director|pro|hr|recruiter|developer|engineer|rep|agent|consultant)/i.test(query)
+          setInferredEntity(isContactQuery ? "contacts" : "companies")
+
+          // Fallback: Use the raw user query as a company_keyword
+          const criteria: SearchCriterion[] = [{ id: "general", label: "Search Type", value: "General Search", checked: true }]
+          setCurrentCriteria(criteria)
+
+          // Ensure the global search query is set for the table to pick up
+          dispatch(startSearch(query))
+
+          // Create a stable component instance to prevent re-renders
+          const confirmationComponent = (
+            <SearchConfirmation criteria={criteria} onApply={handleApplySearch} onCriterionChange={handleCriterionChange} disabled={false} />
+          )
+
+          addMessage({
+            type: "system",
+            content: "Please confirm to continue with keyword search:",
+            component: confirmationComponent
           })
         }
       } finally {
@@ -407,13 +474,13 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
     const redirecting = typeof window !== "undefined" ? sessionStorage.getItem("authRedirectInProgress") === "1" : false
     if (initialQuery && !hasProcessedInitialRef.current && !redirecting) {
       hasProcessedInitialRef.current = true
-      processQuery(initialQuery, true)
+      processQueryRef.current(initialQuery, true)
       setHasProcessedInitialQuery(true)
     }
     return () => {
       mountedRef.current = false
     }
-  }, [initialQuery, hasProcessedInitialQuery, processQuery])
+  }, [initialQuery, hasProcessedInitialQuery])
 
   // Reset when initialQuery changes to a new value
   useEffect(() => {

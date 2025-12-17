@@ -123,7 +123,7 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
         sanitize: !hasSelectedData
       }
 
-      // Prevent redundant calls if payload hasn't meaningfully changed? 
+      // Prevent redundant calls if payload hasn't meaningfully changed?
       // RTK Query usually handles deduping if args are same, but array ref changes break it.
       // We rely on the debounce here.
 
@@ -134,7 +134,7 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
     }, 500) // 500ms debounce
 
     return () => clearTimeout(timer)
-  }, [open, JSON.stringify(selectedIds), emailSelected, phoneSelected, exportCount, estimateExport, type, hasSelectedData, exportMode])
+  }, [open, selectedIds, emailSelected, phoneSelected, exportCount, estimateExport, type, hasSelectedData, exportMode])
 
   const handleExport = async () => {
     try {
@@ -196,8 +196,9 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
                 className="sr-only"
               />
               <div
-                className={`size-4 rounded-full border-2 transition-all ${exportMode === "selected" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
-                  }`}
+                className={`size-4 rounded-full border-2 transition-all ${
+                  exportMode === "selected" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
+                }`}
               >
                 {exportMode === "selected" && <div className="absolute inset-0 m-[3px] rounded-full bg-white" />}
               </div>
@@ -220,8 +221,9 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
                   className="sr-only"
                 />
                 <div
-                  className={`size-4 rounded-full border-2 transition-all ${exportMode === "custom" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
-                    }`}
+                  className={`size-4 rounded-full border-2 transition-all ${
+                    exportMode === "custom" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
+                  }`}
                 >
                   {exportMode === "custom" && <div className="absolute inset-0 m-[3px] rounded-full bg-white" />}
                 </div>

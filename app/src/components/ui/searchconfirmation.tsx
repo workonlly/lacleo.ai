@@ -41,8 +41,8 @@ const SearchConfirmation: React.FC<SearchConfirmationProps> = ({
 
         {/* Criteria List */}
         <div className="my-4 mb-0 space-y-4">
-          {localCriteria.map((criterion) => (
-            <div key={criterion.id} className="flex items-center gap-4">
+          {localCriteria.map((criterion, idx) => (
+            <div key={`${criterion.id}-${criterion.value}-${idx}`} className="flex items-center gap-4">
               {/* Checkbox */}
               <button
                 onClick={() => handleCriterionToggle(criterion.id, !criterion.checked)}

@@ -267,7 +267,7 @@ class Company extends Model
         return [
             'embedding' => [
                 'type' => 'dense_vector',
-                'dims' => 1536, // OpenAI text-embedding-3-small
+                'dims' => 768, // Ollama nomic-embed-text
                 'index' => true,
                 'similarity' => 'dot_product',
             ],

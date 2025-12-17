@@ -74,7 +74,13 @@ const contactsApi = enhancedApi.injectEndpoints({
       }),
 
       translateQuery: builder.mutation<
-        { entity: "contacts" | "companies"; filters: { [key: string]: unknown }; summary?: string; semantic_query?: string | null },
+        {
+          entity: "contacts" | "companies"
+          filters: { [key: string]: unknown }
+          summary?: string
+          semantic_query?: string | null
+          custom?: { label: string; value: string; type: string }[]
+        },
         { messages: { role: string; content: string }[]; context?: { lastResultCount?: number | null } }
       >({
         query: ({ messages, context }) => ({

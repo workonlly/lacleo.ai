@@ -51,7 +51,8 @@ const mapIdToDslKey: Record<string, string> = {
   contact_has_phone: "has",
   contact_country: "country",
   contact_state: "state",
-  contact_city: "city"
+  contact_city: "city",
+  company_keywords: "company_keywords"
 }
 
 const companyBucketKeys = new Set([
@@ -62,6 +63,7 @@ const companyBucketKeys = new Set([
   "technologies",
   "domains",
   "company_names",
+  "company_keywords",
   "founded_year",
   "locations"
 ])

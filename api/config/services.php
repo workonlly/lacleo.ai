@@ -51,12 +51,14 @@ return [
 
     'elastic' => [
         'indices' => [
-            'company' => env('ELASTICSEARCH_COMPANY_INDEX', 'stage_lacleo_company_stats'),
-            'contact' => env('ELASTICSEARCH_CONTACT_INDEX', 'stage_lacleo_contact_stats'),
+            'company' => env('ELASTICSEARCH_COMPANY_INDEX', 'local_ollama_company'),
+            'contact' => env('ELASTICSEARCH_CONTACT_INDEX', 'local_ollama_contact'),
         ],
     ],
 
-    'openai' => [
-        'api_key' => env('OPENAI_API_KEY'),
+    'ollama' => [
+        'base_url' => env('OLLAMA_BASE_URL', 'http://localhost:11434'),
+        'chat_model' => env('OLLAMA_CHAT_MODEL', 'tinyllama'),
+        'embedding_model' => env('OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text'),
     ],
 ];

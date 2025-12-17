@@ -81,43 +81,7 @@ class SearchController extends Controller
         }
     }
 
-    /**
-     * Unified contacts search (DSL-powered)
-     */
-    public function searchContacts(Request $request): JsonResponse
-    {
-        try {
-            $payload = (array) $request->json()->all();
-            $filterDsl = $payload['filter_dsl'] ?? [];
-            $searchTerm = $payload['searchTerm'] ?? null;
-            $pagination = (array) ($payload['pagination'] ?? []);
-            $sort = (array) ($payload['sorting'] ?? []);
-            $aggs = (array) ($payload['aggregations'] ?? []);
 
-            $page = max(1, (int) ($pagination['page'] ?? 1));
-            $per = max(1, min(200, (int) ($pagination['count'] ?? 50)));
-
-            $results = $this->searchService->searchUnifiedContacts([
-                'searchTerm' => $searchTerm,
-                'filter_dsl' => $filterDsl,
-                'page' => $page,
-                'count' => $per,
-                'sort' => $sort,
-                'aggregations' => $aggs,
-            ]);
-
-            if (($payload['debug'] ?? 0) === 1) {
-                $results['debug'] = $this->searchService->buildUnifiedContactsQueryArray($searchTerm, $filterDsl, $sort, $aggs);
-            }
-
-            return response()->json($results);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'error' => 'SEARCH_FAILED',
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-    }
 
     /**
      * List all available filters

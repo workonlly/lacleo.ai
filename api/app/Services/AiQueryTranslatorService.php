@@ -66,13 +66,36 @@ NORMALIZED FIELDS YOU ARE ALLOWED TO USE:
     "years_of_experience": { "min": num, "max": num }
   },
   "semantic_query": "Optional: A descriptive sentence for vector search if the user asks for concepts/lookalikes (e.g. 'Sustainable logistics companies' or 'Competitors to Stripe').",
-  "summary": "Short explanation of what filters were applied (e.g. 'Searching for SaaS companies in NY with Revenue > 1M')" 
+  "summary": "Short explanation of what filters were applied (e.g. 'Searching for SaaS companies in NY with Revenue > 1M')",
+  "custom": [
+    { "label": "string (e.g. Niche)", "value": "string (e.g. Bio-Tech)", "type": "custom" }
+  ]
 }
 
+            EXAMPLES:
+            User: "Find bootstrapped biotech startups in SF"
+            JSON:
+            {
+                "entity": "companies",
+                "filters": {
+                    "locations": { "include": ["San Francisco"] }
+                },
+                "custom": [
+                    { "label": "Status", "value": "Bootstrapped", "type": "custom" },
+                    { "label": "Industry", "value": "Biotech", "type": "custom" }
+                ],
+                "summary": "Searching for bootstrapped biotech companies in San Francisco."
+            }
+
 INTERPRETATION RULES:
+1. **ENTITY**: "companies" or "contacts".
+2. **FILTERS**: Use only standard keys if possible (locations, job_title, etc.).
+3. **DYNAMIC / CUSTOM**: If a requirement doesn't fit standard filters (e.g. "Bootstrapped", "YC Backed", "Crypto"), PUT IT IN `custom`.
+4. **OUTPUT**: JSON ONLY. No markdown.
 - If the newest message changes the topic entirely, reset the filters.
 - If the newest message is a refinement (e.g. "also in Texas", "remove managers"), merge strict logic with previous valid filters.
 - **CRITICAL**: Use "company_keywords" for ANY topics, themes, business models, or context matching (e.g. "CRM", "Marketplace", "B2B", "Conferences", "Events").
+- **DYNAMIC FILTERS**: If the user asks for a filter that doesn't map to a standard field but is important context (e.g., "Must be bootstrapped", "Founded by women"), put it in the `custom` array.
 - **SEMANTIC SEARCH**: If the user asks for "Companies like [Conmpany]" or "Startups in [Niche]", generate a `semantic_query` describing the ideal target.
 - If the user asks for something unsupported (e.g. "last 6 months", "attended event"), **IGNORE** the constraint but **EXTRACT** the topic into "company_keywords".
 - Map synonyms (short list only):
@@ -101,14 +124,10 @@ Return ONLY valid JSON:
 EOT;
 
         try {
-            $apiKey = config('services.openai.api_key');
+            $baseUrl = config('services.ollama.base_url');
+            $model = config('services.ollama.chat_model');
 
-            if (empty($apiKey)) {
-                Log::warning('OpenAI API key not configured. Falling back to empty search.');
-                return ['entity' => 'contacts', 'filters' => [], 'summary' => 'Search functionality is currently unavailable.'];
-            }
-
-            // Build the messages array for OpenAI
+            // Build the messages array for Ollama
             // Prepend system prompt
             $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
 
@@ -122,26 +141,39 @@ EOT;
                 }
             }
 
-            $response = Http::withToken($apiKey)
-                ->timeout(20) // Increased timeout for potentially longer context processing
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => 'gpt-4o',
+            // Ollama API Call (fail fast and respect app timeout)
+            $timeout = (int) env('AI_TRANSLATE_TIMEOUT', 10);
+            if ($timeout <= 0) { $timeout = 10; }
+            $response = Http::timeout($timeout)
+                ->connectTimeout(min(3, $timeout))
+                ->post("{$baseUrl}/api/chat", [
+                    'model' => $model,
                     'messages' => $apiMessages,
-                    'temperature' => 0,
-                    'response_format' => ['type' => 'json_object'],
+                    'stream' => false,
+                    'format' => 'json', // Ollama supports this to force JSON
+                    'options' => [
+                        'temperature' => 0,
+                    ]
                 ]);
 
             if ($response->failed()) {
-                Log::error('OpenAI API request failed: ' . $response->body());
+                Log::error('Ollama API request failed: ' . $response->body());
                 return ['entity' => 'contacts', 'filters' => [], 'summary' => 'Failed to process search request.'];
             }
 
-            $content = $response->json('choices.0.message.content');
+            $content = $response->json('message.content');
             $data = json_decode($content, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
-                Log::error('OpenAI returned invalid JSON: ' . $content);
-                return ['entity' => 'contacts', 'filters' => [], 'summary' => 'Could not understand the AI response.'];
+                Log::error('Ollama returned invalid JSON: ' . $content);
+                // TinyLlama might output text before JSON despite instructions, attempt simplistic extraction if needed
+                if (preg_match('/\{.*\}/s', $content, $matches)) {
+                    $data = json_decode($matches[0], true);
+                }
+
+                if (!$data) {
+                    return ['entity' => 'contacts', 'filters' => [], 'summary' => 'Could not understand the AI response.'];
+                }
             }
 
             // Ensure basics exist
@@ -150,6 +182,7 @@ EOT;
                 'filters' => $data['filters'] ?? [],
                 'semantic_query' => $data['semantic_query'] ?? null,
                 'summary' => $data['summary'] ?? 'Updated search filters based on your request.',
+                'custom' => $data['custom'] ?? [],
             ];
 
         } catch (\Exception $e) { // Catch global Exception

@@ -3,8 +3,9 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react"
 import Cookies from "js-cookie"
 import { ACCOUNT_HOST, AI_HOST } from "../constants/apiConstants"
 
+const apiHost = (import.meta.env.VITE_API_HOST as string) || "/api/v1"
 const baseQuery = fetchBaseQuery({
-  baseUrl: import.meta.env.VITE_API_HOST as string,
+  baseUrl: apiHost,
   credentials: "include",
   prepareHeaders: (headers, { getState }) => {
     const state = getState() as TRootState

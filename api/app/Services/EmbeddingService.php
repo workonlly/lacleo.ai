@@ -13,7 +13,7 @@ class EmbeddingService
 
     public function __construct()
     {
-        $this->apiKey = config('services.openai.key') ?? env('OPENAI_API_KEY');
+        $this->model = config('services.ollama.embedding_model');
     }
 
     /**
@@ -25,24 +25,27 @@ class EmbeddingService
      */
     public function generate(string $text): array
     {
-        // OpenAI recommends replacing newlines with spaces for best results
+        $baseUrl = config('services.ollama.base_url');
+
+        // Remove newlines
         $text = str_replace("\n", " ", $text);
 
-        $response = Http::withToken($this->apiKey)
-            ->post('https://api.openai.com/v1/embeddings', [
+        $response = Http::timeout(30)
+            ->post("{$baseUrl}/api/embeddings", [
                 'model' => $this->model,
-                'input' => $text,
+                'prompt' => $text, // Ollama uses 'prompt', OpenAI uses 'input'
             ]);
 
         if ($response->failed()) {
-            Log::error('OpenAI Embedding Error', [
+            Log::error('Ollama Embedding Error', [
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
             throw new Exception("Failed to generate embedding: " . $response->body());
         }
 
-        return $response->json('data.0.embedding');
+        // Ollama returns { "embedding": [...] }
+        return $response->json('embedding');
     }
 
     /**
