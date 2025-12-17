@@ -102,7 +102,7 @@ class Contact extends Model
 
     public function elasticReadAlias(): string
     {
-        return $this->elasticIndex() . '_read';
+        return $this->elasticIndex();
     }
 
     public function elasticSettings(): array
