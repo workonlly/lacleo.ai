@@ -14,7 +14,7 @@ class RecordNormalizer
         $rawEmails = $doc['emails'] ?? [];
         if (is_array($rawEmails)) {
             foreach ($rawEmails as $e) {
-                if (is_array($e) && ! empty($e['email'])) {
+                if (is_array($e) && !empty($e['email'])) {
                     $emails[] = ['email' => trim($e['email'])];
                 } elseif (is_string($e) && trim($e) !== '') {
                     $emails[] = ['email' => trim($e)];
@@ -22,9 +22,9 @@ class RecordNormalizer
             }
         }
         foreach (['work_email', 'personal_email', 'email'] as $ek) {
-            if (! empty($doc[$ek])) {
+            if (!empty($doc[$ek])) {
                 $val = is_array($doc[$ek]) ? ($doc[$ek]['email'] ?? null) : $doc[$ek];
-                if ($val && ! self::containsEmail($emails, $val)) {
+                if ($val && !self::containsEmail($emails, $val)) {
                     $emails[] = ['email' => trim((string) $val)];
                 }
             }
@@ -35,17 +35,24 @@ class RecordNormalizer
         $rawPhones = $doc['phone_numbers'] ?? $doc['phones'] ?? [];
         if (is_array($rawPhones)) {
             foreach ($rawPhones as $p) {
-                if (is_array($p) && ! empty($p['phone_number'])) {
+                if (is_array($p) && !empty($p['phone_number'])) {
                     $phones[] = ['phone_number' => trim($p['phone_number'])];
                 } elseif (is_string($p) && trim($p) !== '') {
                     $phones[] = ['phone_number' => trim($p)];
                 }
             }
+        } elseif (is_string($rawPhones) && trim($rawPhones) !== '') {
+            foreach (explode(';', $rawPhones) as $p) {
+                if (trim($p) !== '') {
+                    $phones[] = ['phone_number' => trim($p)];
+                }
+            }
         }
-        foreach (['mobile_number', 'direct_number', 'phone'] as $pk) {
-            if (! empty($doc[$pk])) {
+
+        foreach (['mobile_number', 'direct_number', 'phone', 'phone_number', 'mobile_phone'] as $pk) {
+            if (!empty($doc[$pk])) {
                 $val = is_array($doc[$pk]) ? ($doc[$pk]['phone_number'] ?? null) : $doc[$pk];
-                if ($val && ! self::containsPhone($phones, $val)) {
+                if ($val && !self::containsPhone($phones, (string) $val)) {
                     $phones[] = ['phone_number' => trim((string) $val)];
                 }
             }
@@ -121,7 +128,7 @@ class RecordNormalizer
         $rawEmails = $doc['emails'] ?? [];
         if (is_array($rawEmails)) {
             foreach ($rawEmails as $e) {
-                if (is_array($e) && ! empty($e['email'])) {
+                if (is_array($e) && !empty($e['email'])) {
                     $emails[] = ['email' => trim($e['email'])];
                 } elseif (is_string($e) && trim($e) !== '') {
                     $emails[] = ['email' => trim($e)];
@@ -129,7 +136,7 @@ class RecordNormalizer
             }
         }
         $primaryEmail = $doc['company_email'] ?? ($doc['email'] ?? null);
-        if (! empty($primaryEmail)) {
+        if (!empty($primaryEmail)) {
             $val = is_array($primaryEmail) ? ($primaryEmail['email'] ?? null) : $primaryEmail;
             if ($val) {
                 $exists = false;
@@ -139,7 +146,7 @@ class RecordNormalizer
                         break;
                     }
                 }
-                if (! $exists) {
+                if (!$exists) {
                     $emails[] = ['email' => trim((string) $val)];
                 }
             }
@@ -237,7 +244,7 @@ class RecordNormalizer
             $contact = $contact->toArray();
         }
         $norm = self::normalizeContact(is_array($contact) ? $contact : (array) $contact);
-        if (! empty($norm['work_email'])) {
+        if (!empty($norm['work_email'])) {
             return (string) $norm['work_email'];
         }
         foreach ($norm['emails'] as $e) {

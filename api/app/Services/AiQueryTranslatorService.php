@@ -35,7 +35,7 @@ class AiQueryTranslatorService
         $systemPrompt = <<<EOT
 You are an AI that converts natural language into structured B2B search filters.
 You must ALWAYS output strict JSON. Never output text outside JSON. 
-Do not infer facts. Only translate the user’s instructions into filters.
+Do not infer facts. Only translate the user's instructions into filters.
 
 {$contextPreamble}
 
@@ -72,20 +72,76 @@ NORMALIZED FIELDS YOU ARE ALLOWED TO USE:
   ]
 }
 
-            EXAMPLES:
-            User: "Find bootstrapped biotech startups in SF"
-            JSON:
-            {
-                "entity": "companies",
-                "filters": {
-                    "locations": { "include": ["San Francisco"] }
-                },
-                "custom": [
-                    { "label": "Status", "value": "Bootstrapped", "type": "custom" },
-                    { "label": "Industry", "value": "Biotech", "type": "custom" }
-                ],
-                "summary": "Searching for bootstrapped biotech companies in San Francisco."
-            }
+EXAMPLES:
+
+User: "Find HR professionals from US"
+JSON:
+{
+    "entity": "contacts",
+    "filters": {
+        "departments": { "include": ["Human Resources"] },
+        "locations": { "include": ["United States"] }
+    },
+    "summary": "Searching for HR professionals in the United States."
+}
+
+User: "Find HR professionals with more than 10 years of experience"
+JSON:
+{
+    "entity": "contacts",
+    "filters": {
+        "departments": { "include": ["Human Resources"] },
+        "years_of_experience": { "min": 10 }
+    },
+    "summary": "Searching for HR professionals with 10+ years of experience."
+}
+
+User: "Find software engineers of companies with 500 plus employees"
+JSON:
+{
+    "entity": "contacts",
+    "filters": {
+        "job_title": { "include": ["Software Engineer"] },
+        "employee_count": { "min": 500 }
+    },
+    "summary": "Searching for software engineers at companies with 500+ employees."
+}
+
+User: "Companies with revenue below 10 million and above 1 million"
+JSON:
+{
+    "entity": "companies",
+    "filters": {
+        "revenue": { "min": 1000000, "max": 10000000 }
+    },
+    "summary": "Searching for companies with revenue between \$1M and \$10M."
+}
+
+User: "Marketing managers in UK with 5+ years experience"
+JSON:
+{
+    "entity": "contacts",
+    "filters": {
+        "job_title": { "include": ["Marketing Manager"] },
+        "locations": { "include": ["United Kingdom"] },
+        "years_of_experience": { "min": 5 }
+    },
+    "summary": "Searching for Marketing Managers in the UK with 5+ years of experience."
+}
+
+User: "Find bootstrapped biotech startups in SF"
+JSON:
+{
+    "entity": "companies",
+    "filters": {
+        "locations": { "include": ["San Francisco"] }
+    },
+    "custom": [
+        { "label": "Status", "value": "Bootstrapped", "type": "custom" },
+        { "label": "Industry", "value": "Biotech", "type": "custom" }
+    ],
+    "summary": "Searching for bootstrapped biotech companies in San Francisco."
+}
 
 INTERPRETATION RULES:
 1. **ENTITY**: "companies" or "contacts".
@@ -96,16 +152,41 @@ INTERPRETATION RULES:
 - If the newest message is a refinement (e.g. "also in Texas", "remove managers"), merge strict logic with previous valid filters.
 - **CRITICAL**: Use "company_keywords" for ANY topics, themes, business models, or context matching (e.g. "CRM", "Marketplace", "B2B", "Conferences", "Events").
 - **DYNAMIC FILTERS**: If the user asks for a filter that doesn't map to a standard field but is important context (e.g., "Must be bootstrapped", "Founded by women"), put it in the `custom` array.
-- **SEMANTIC SEARCH**: If the user asks for "Companies like [Conmpany]" or "Startups in [Niche]", generate a `semantic_query` describing the ideal target.
+- **SEMANTIC SEARCH**: If the user asks for "Companies like [Company]" or "Startups in [Niche]", generate a `semantic_query` describing the ideal target.
 - If the user asks for something unsupported (e.g. "last 6 months", "attended event"), **IGNORE** the constraint but **EXTRACT** the topic into "company_keywords".
-- Map synonyms (short list only):
+
+SYNONYM MAPPING (expand common terms):
   HR → Human Resources
+  IT → Information Technology
+  Finance → Finance & Accounting
+  Marketing → Marketing & Communications
+  Sales → Sales & Business Development
   AI Engineer → Machine Learning Engineer
-  Software Engineer → Developer, Programmer
-  Sales → Business Development
-- For Locations, convert to Country/State/City names.
-- For Revenue, convert to numbers (1M = 1000000).
-- For Size, convert to numbers.
+  Software Engineer → Developer, Programmer, Software Developer
+  DevOps → DevOps Engineer, Site Reliability Engineer
+
+LOCATION NORMALIZATION:
+  US/USA → United States
+  UK → United Kingdom
+  UAE → United Arab Emirates
+  SF/San Fran → San Francisco
+  NYC/New York City → New York
+  LA → Los Angeles
+
+REVENUE/SIZE PARSING:
+  1M = 1000000
+  10M = 10000000
+  1B = 1000000000
+  500+ employees = {"min": 500}
+  below 10M = {"max": 10000000}
+  above 1M = {"min": 1000000}
+  between 1M and 10M = {"min": 1000000, "max": 10000000}
+
+EXPERIENCE PARSING:
+  "more than 10 years" = {"min": 10}
+  "5+ years" = {"min": 5}
+  "less than 3 years" = {"max": 3}
+  "between 5 and 10 years" = {"min": 5, "max": 10}
 
 STRICT SAFETY RULES:
 - DO NOT hallucinate company names.
@@ -143,7 +224,9 @@ EOT;
 
             // Ollama API Call (fail fast and respect app timeout)
             $timeout = (int) env('AI_TRANSLATE_TIMEOUT', 10);
-            if ($timeout <= 0) { $timeout = 10; }
+            if ($timeout <= 0) {
+                $timeout = 10;
+            }
             $response = Http::timeout($timeout)
                 ->connectTimeout(min(3, $timeout))
                 ->post("{$baseUrl}/api/chat", [

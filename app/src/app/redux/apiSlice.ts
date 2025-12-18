@@ -43,6 +43,7 @@ export const accountBaseQuery = fetchBaseQuery({
 
 export const aiBaseQuery = fetchBaseQuery({
   baseUrl: AI_HOST as string,
+  credentials: "include",
   prepareHeaders: (headers, { getState }) => {
     const state = getState() as TRootState
     const token = state.setting.token || import.meta.env.VITE_AI_BEARER

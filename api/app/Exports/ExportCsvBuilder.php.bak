@@ -613,6 +613,7 @@ class ExportCsvBuilder
             (string) ($comp['founded_year'] ?? ''),
         ];
     }
+}
 
     public static function buildCompaniesCsv(array $companies, array $contacts, bool $sanitize = false): string
     {

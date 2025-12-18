@@ -7,7 +7,7 @@ const CONNECTION_REFUSED_RESPONSE = {
 
 export const ACCOUNT_HOST = import.meta.env.VITE_ACCOUNT_HOST
 // In production, use configured host (fallback to default agent host). In dev/stage, use relative path to leverage Vite proxy.
-export const AI_HOST = import.meta.env.PROD ? import.meta.env.VITE_AI_HOST : ""
+export const AI_HOST = import.meta.env.PROD ? import.meta.env.VITE_AI_HOST : "/api/v1/ai"
 
 export const USER = {
   GET_USER: "/user",

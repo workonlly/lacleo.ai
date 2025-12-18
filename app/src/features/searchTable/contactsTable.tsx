@@ -90,7 +90,7 @@ export function ContactsTable() {
   const selectedFilters = useAppSelector(selectSelectedItems)
   const [pagination, setPagination] = useState({
     page: 1,
-    count: 20,
+    count: 50,
     total: 0,
     lastPage: 1
   })

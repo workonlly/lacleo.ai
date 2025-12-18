@@ -44,7 +44,7 @@ class ExportController extends Controller
                 if ($validated['type'] === 'contacts') {
                     $base = Contact::elastic()->index((new Contact())->elasticReadAlias())->filter(['terms' => ['_id' => $validated['ids']]]);
                     if (!empty($validated['limit'])) {
-                        $data = $base->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone'])->paginate(1, (int) $validated['limit'])['data'] ?? [];
+                        $data = $base->paginate(1, (int) $validated['limit'])['data'] ?? [];
                         $contactsIncluded = count($data);
                         foreach ($data as $c) {
                             $norm = RecordNormalizer::normalizeContact($c);
@@ -58,7 +58,7 @@ class ExportController extends Controller
                     } else {
                         $page = 1;
                         $per = 1000;
-                        $result = $base->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone'])->paginate($page, $per);
+                        $result = $base->paginate($page, $per);
                         $contactsIncluded = $result['total'] ?? count($result['data'] ?? []);
                         $last = $result['last_page'] ?? 1;
                         while (true) {
@@ -76,7 +76,7 @@ class ExportController extends Controller
                                 break;
                             }
                             $page++;
-                            $result = $base->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone'])->paginate($page, $per);
+                            $result = $base->paginate($page, $per);
                         }
                     }
                 } else {
@@ -104,7 +104,7 @@ class ExportController extends Controller
                     }
                     $builder->setBoolParam('minimum_should_match', 1);
                     if (!empty($validated['limit'])) {
-                        $data = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone'])->paginate(1, (int) $validated['limit'])['data'] ?? [];
+                        $data = $builder->paginate(1, (int) $validated['limit'])['data'] ?? [];
                         $contactsIncluded = count($data);
                         foreach ($data as $c) {
                             $norm = RecordNormalizer::normalizeContact($c);
@@ -126,7 +126,7 @@ class ExportController extends Controller
                     } else {
                         $page = 1;
                         $per = 1000;
-                        $result = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone'])->paginate($page, $per);
+                        $result = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone', 'mobile_number', 'direct_number', 'phone'])->paginate($page, $per);
                         $contactsIncluded = $result['total'] ?? count($result['data'] ?? []);
                         $last = $result['last_page'] ?? 1;
                         while (true) {
@@ -144,7 +144,7 @@ class ExportController extends Controller
                                 break;
                             }
                             $page++;
-                            $result = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone_number', 'mobile_phone'])->paginate($page, $per);
+                            $result = $builder->paginate($page, $per);
                         }
                         // include company-level phones in preview for companies export
                         $companyPhone = 0;
@@ -196,7 +196,7 @@ class ExportController extends Controller
             'email_count' => $emailCount,
             'phone_count' => $phoneCount,
             'credits_required' => (int) $creditsRequired,
-            'total_rows' => (int) $totalRows,   
+            'total_rows' => (int) $totalRows,
             'can_export_free' => (bool) $canExportFree,
             'remaining_before' => (int) $balance,
             'remaining_after' => max(0, (int) $balance - (int) $creditsRequired),
@@ -528,13 +528,13 @@ class ExportController extends Controller
         $emailCount = 0;
         $phoneCount = 0;
 
-        $builder = Contact::elastic()->filter(['terms' => ['_id' => $ids]]);
+        $builder = Contact::elastic()->index((new Contact())->elasticReadAlias())->filter(['terms' => ['_id' => $ids]]);
         $chunkSize = 1000;
 
         // Iterate carefully
         $page = 1;
         while (true) {
-            $res = $builder->select(['emails', 'phone_numbers'])->paginate($page, $chunkSize);
+            $res = $builder->paginate($page, $chunkSize);
             $data = $res['data'] ?? [];
             if (empty($data))
                 break;
@@ -556,5 +556,5 @@ class ExportController extends Controller
             + ($fieldsToggle['phone'] ? $phoneCount : 0) * 4;
 
         return ['credits_required' => $credits];
-  }
+    }
 }
