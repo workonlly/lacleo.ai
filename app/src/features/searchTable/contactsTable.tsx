@@ -316,6 +316,8 @@ export function ContactsTable() {
       width: "w-1/4",
       render: (_: unknown, row: ContactAttributes) => {
         // Count emails for this specific contact
+        // const phoneCount = row.phone_number ? 1 : 0
+        // const emailCount = row.email ? 1 : 0
         const emailCount = Array.isArray(row.emails) ? row.emails.length : 0
     
         

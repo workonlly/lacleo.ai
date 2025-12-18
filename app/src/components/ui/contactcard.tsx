@@ -286,8 +286,6 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
         {!!(phonesList.length > 0 || companyPhone) && (
           <div className="border-b border-gray-100 last:border-b-0">
             <div className="bg-gray-50 px-5 py-3">
-              console.log(phonesList,"1")
-              console.log(companyPhone,"2")
               <h4 className="text-xs font-medium uppercase tracking-wide text-gray-500">Phone</h4>
             </div>
             <div className="space-y-3 p-5 pt-3">
