@@ -17,7 +17,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filterSlice"
-import { setLastResultCount, selectSemanticQuery, selectSearchQuery, startSearch } from "../aisearch/slice/searchslice"
+import { setLastResultCount, selectSemanticQuery, startSearch } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery } from "./slice/apiSlice"
 import { useCompanyLogoQuery } from "./slice/apiSlice"
@@ -60,13 +60,14 @@ export function CompaniesTable() {
 
   // Sync with global search query
 
-  const globalSearchQuery = useAppSelector(selectSearchQuery)
-  const [queryValue, setQueryValue] = useState(globalSearchQuery)
+  // const globalSearchQuery = useAppSelector(selectSearchQuery)
+  const [queryValue, setQueryValue] = useState("")
 
   // Keep local state in sync with global (if updated elsewhere)
-  useEffect(() => {
-    setQueryValue(globalSearchQuery)
-  }, [globalSearchQuery])
+  // selectSearchQuery :-> using this was the problem here
+  // useEffect(() => {
+  //   setQueryValue(globalSearchQuery)
+  // }, [globalSearchQuery])
 
   const debouncedQueryValue = useDebounce(queryValue, 500)
 

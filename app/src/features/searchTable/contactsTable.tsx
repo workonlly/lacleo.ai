@@ -22,7 +22,7 @@ import { Eye, Mail, Phone, User2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filterSlice"
-import { setLastResultCount, selectSemanticQuery, selectSearchQuery, startSearch } from "../aisearch/slice/searchslice"
+import { setLastResultCount, selectSemanticQuery,  startSearch } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery, useCompanyLogoQuery } from "./slice/apiSlice"
 import { openContactInfoForContact } from "./slice/contactInfoSlice"
@@ -61,13 +61,13 @@ export function ContactsTable() {
   })
 
   // Sync with global search query
-  const globalSearchQuery = useAppSelector(selectSearchQuery)
-  const [queryValue, setQueryValue] = useState(globalSearchQuery)
+  // const globalSearchQuery = useAppSelector(selectSearchQuery)
+  const [queryValue, setQueryValue] = useState("")
 
   // Keep local state in sync with global (if updated elsewhere)
-  useEffect(() => {
-    setQueryValue(globalSearchQuery)
-  }, [globalSearchQuery])
+  // useEffect(() => {
+  //   setQueryValue(globalSearchQuery)
+  // }, [globalSearchQuery])
 
   const debouncedQueryValue = useDebounce(queryValue, 500)
 
