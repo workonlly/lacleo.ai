@@ -25,6 +25,7 @@ import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filte
 import { setLastResultCount, selectSemanticQuery,  startSearch } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery, useCompanyLogoQuery } from "./slice/apiSlice"
+import { CompanyAttributes } from "@/interface/searchTable/search"
 import { openContactInfoForContact } from "./slice/contactInfoSlice"
 import { buildSearchQuery } from "@/app/utils/buildSearchQuery"
 import { useDebounce } from "@/app/hooks/useDebounce"
@@ -46,6 +47,40 @@ const ContactCompanyCell = ({ row }: { row: ContactAttributes }) => {
       <span className="break-words">{row.company || "N/A"}</span>
     </div>
   )
+}
+
+// Component to calculate and display phone count (including company phone)
+const PhoneCountCell = ({ contact }: { contact: ContactAttributes }) => {
+  // Count contact's own phones
+  let phoneCount = 0
+  
+  if (Array.isArray(contact.phone_numbers) && contact.phone_numbers.length > 0) {
+    phoneCount += contact.phone_numbers.length
+  } else if (contact.phone_number) {
+    phoneCount += 1
+  } else if ((contact as any)?.has_contact_phone === true) {
+    phoneCount += 1
+  }
+  
+  // Fetch company data to check for company phone
+  const normalizedDomain = (contact.website || "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .trim()
+  const companySearchUrl = buildSearchUrl({ page: 1, count: 1 }, { searchTerm: normalizedDomain || contact.company || "" })
+  const { data: companySearchData } = useSearchContactsQuery({ type: "company", buildParams: companySearchUrl }, { skip: !normalizedDomain && !contact.company })
+  
+  const resolvedCompany: CompanyAttributes | null =
+    ((companySearchData as { data?: Array<{ attributes: CompanyAttributes }> } | undefined)?.data?.[0]?.attributes as
+      | CompanyAttributes
+      | undefined) || null
+  
+  const companyPhone = resolvedCompany?.company_phone || resolvedCompany?.phone_number || null
+  if (companyPhone) {
+    phoneCount += 1
+  }
+  
+  return phoneCount
 }
 
 export function ContactsTable() {
@@ -280,8 +315,12 @@ export function ContactsTable() {
       field: "contact",
       width: "w-1/4",
       render: (_: unknown, row: ContactAttributes) => {
-        const phoneCount = row.phone_number ? 1 : 0
-        const emailCount = row.email ? 1 : 0
+        // Count emails for this specific contact
+        // const phoneCount = row.phone_number ? 1 : 0
+        // const emailCount = row.email ? 1 : 0
+        const emailCount = Array.isArray(row.emails) ? row.emails.length : 0
+    
+        
         return (
           <HoverCard
             className=""
@@ -290,7 +329,9 @@ export function ContactsTable() {
               <div className="flex items-center gap-1">
                 <Button className="rounded-lg border bg-transparent px-1.5 py-1 hover:bg-transparent">
                   <Phone className="size-3 text-[#5C5C5C]" />
-                  <span className="rounded-full bg-[#EBEBEB] px-2 py-0.5 text-[11px] font-medium text-gray-950">{phoneCount}</span>
+                  <span className="rounded-full bg-[#EBEBEB] px-2 py-0.5 text-[11px] font-medium  text-gray-950">
+                    <PhoneCountCell contact={row} />
+                  </span>
                 </Button>
                 <Button className="rounded-lg border bg-transparent px-1.5 py-1 hover:bg-transparent">
                   <Mail className="size-3 text-[#5C5C5C]" />

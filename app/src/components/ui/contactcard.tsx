@@ -227,7 +227,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
       <div className="p-5">
         <div className="flex items-start gap-4 pb-4">
           <div className="flex size-12 items-center justify-center rounded-full border border-gray-200 bg-gray-50">
-            {logoUrl ? <img src={logoUrl} alt={companyName} className="size-8 object-contain" /> : <User className="size-6 text-gray-400" />}
+            {logoUrl ? <img src={logoUrl} alt={companyName} className="size-8 object-contain " /> : <User className="size-6 text-gray-400" />}
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-semibold text-gray-900">{displayName}</h3>
