@@ -131,6 +131,7 @@ Route::prefix('v1')->middleware([\App\Http\Middleware\RequestLogMiddleware::clas
             'request.timeout',
             'csrf.guard',
         ]));
+    Route::get('/billing/export/download/{requestId}', [ExportController::class, 'downloadDirect']);
     Route::post('/billing/export-query', [ExportController::class, 'exportByQuery'])
         ->middleware(array_filter([
             app()->environment('testing') ? null : 'throttle:export',

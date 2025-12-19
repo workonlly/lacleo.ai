@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\HasElasticIndex;
+use App\Services\RecordNormalizer;
 use Illuminate\Database\Eloquent\Model;
 
 class Company extends Model
@@ -271,6 +272,18 @@ class Company extends Model
                 'index' => true,
                 'similarity' => 'dot_product',
             ],
+            'technologies_normalized' => [
+                'type' => 'keyword',
+            ],
+        ];
+    }
+
+    public function additionalElasticAttributes(): array
+    {
+        $techs = (array) ($this->technologies ?? []);
+
+        return [
+            'technologies_normalized' => RecordNormalizer::normalizeTechnologies($techs),
         ];
     }
 

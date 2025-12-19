@@ -5,10 +5,9 @@ import { Card } from "@/components/ui/card"
 import { RangeSlider } from "@/components/ui/rangeslider"
 import { IFilter, IFilterGroup } from "@/interface/filters/filterGroup"
 import { SelectedFilter } from "@/interface/filters/slice"
-import { CheckCircle, ChevronDown, ChevronUp, Minus, Plus, Save, Search, Upload } from "lucide-react"
+import { CheckCircle, Minus, Plus, Save, Search, Upload, Filter } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useLocation } from "react-router-dom"
-import Funnel from "./../../static/media/icons/filter-icon.svg?react"
 import FilterSearchValueResults from "./filterValues"
 import { useGetFiltersQuery } from "./slice/apiSlice"
 import SaveFilter from "@/components/ui/modals/savefilter"
@@ -16,6 +15,10 @@ import Checkbox from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { IndustryFilter } from "./components/IndustryFilter"
+import { JobTitleFilter } from "./components/JobTitleFilter"
+import { DepartmentFilter } from "./components/DepartmentFilter"
+import { TechnologyFilter } from "./components/TechnologyFilter"
+import { LocationFilter } from "./components/LocationFilter"
 import BulkCompanyInputDialog from "./components/BulkCompanyInputDialog"
 import {
   addSelectedItem,
@@ -24,16 +27,20 @@ import {
   selectExpandedSections,
   selectSearchTerms,
   selectSelectedItems,
+  selectCompanyFilters,
+  selectContactFilters,
+  sectionToKey,
   setSearchTerm,
   toggleSection
 } from "./slice/filterSlice"
 
 const FilterTag = ({ item, onRemove }: { item: SelectedFilter; onRemove: () => void }) => (
   <span
-    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-normal transition-colors ${item.type === "include"
+    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-normal transition-colors ${
+      item.type === "include"
         ? "bg-[#335CFF] text-white ring-1 ring-emerald-200/50 dark:bg-[#335CFF] dark:text-white dark:ring-[#335CFF]"
         : "bg-red-200 text-red-950 ring-1 ring-red-200/50 dark:bg-red-950/50 dark:text-red-400 dark:ring-red-800/50"
-      }`}
+    }`}
   >
     {item.name}
     <button onClick={onRemove} className="rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10" aria-label="Remove filter">
@@ -158,8 +165,9 @@ export const Filters = () => {
 
     return (
       <div
-        className={`border-b border-gray-100  dark:border-gray-800/50 ${isOpen ? "bg-[#F7F7F7] dark:bg-gray-800/80" : "bg-white dark:bg-transparent"
-          }`}
+        className={`border-b border-gray-100  dark:border-gray-800/50 ${
+          isOpen ? "bg-[#F7F7F7] dark:bg-gray-800/80" : "bg-white dark:bg-transparent"
+        }`}
       >
         <SectionHeader title={title} expanded={isOpen} onClick={() => dispatch(toggleSection(id))} />
         {!!isOpen && (
@@ -179,25 +187,38 @@ export const Filters = () => {
   // ...
 
   const currentFiltersGroups: IFilterGroup[] = useMemo(() => {
+    // Map to track seen DSL keys per group to prevent duplicates
+    const seenDslKeys = new Set<string>()
+
     const groups = filterGroups
       .map((group) => {
         let filters = group.filters.filter((filter) => {
+          const dslKey = sectionToKey[filter.id] || filter.id
+
           if (isPeoplePage) {
-            if (filter.filter_type === "contact") {
-              if (filter.id === "company_name_contact") return false
-              return true
-            }
+            // Hide explicit duplicates for contact search
+            if (filter.id === "company_name_contact") return false
+            if (filter.id === "company_domain_contact") return false
+
+            if (filter.filter_type === "contact") return true
             // Show all company filters on contacts page
-            if (filter.filter_type === "company") {
-              return true
-            }
+            if (filter.filter_type === "company") return true
           }
+
           // For Company page, only show company filters
           // Hide explicit standalone keywords (merged into Industry)
-          if (["company_keywords"].includes(filter.id)) {
-            return false
-          }
+          if (["company_keywords"].includes(filter.id)) return false
+
           return filter.filter_type === "company"
+        })
+
+        // Deduplicate based on DSL key to prevent visual redundancy (e.g. two "Company Domain" fields)
+        filters = filters.filter((f) => {
+          const key = sectionToKey[f.id] || f.id
+          const uniqueKey = `${group.group_id}_${key}`
+          if (seenDslKeys.has(uniqueKey)) return false
+          seenDslKeys.add(uniqueKey)
+          return true
         })
 
         // Reorder Company Group: Put Company Name first, then Domain
@@ -205,16 +226,18 @@ export const Filters = () => {
           const priorityMap: Record<string, number> = {
             company_name_company: 1,
             company_domain_company: 2,
-            // company_domain_contact: 2,
             industry: 3,
             company_industries: 3,
-            employee_count: 4,
-            company_headcount: 4,
-            company_headcount_contact: 4,
-            company_revenue: 5,
+            technologies: 4,
+            company_technologies: 4,
+            employee_count: 5,
+            company_headcount: 5,
+            company_headcount_contact: 5,
+            company_revenue: 6,
             company_revenue_range: 6,
             company_location: 7,
-            company_headquarters: 8
+            company_headquarters: 8,
+            company_founded_year: 9
           }
 
           const getP = (id: string) => priorityMap[id] || 100
@@ -225,14 +248,19 @@ export const Filters = () => {
             return pA - pB
           })
 
-          // Rename employee_count to "Company Size / Employee" safely
+          // Rename filters for better UX
           filters = filters.map((f) => {
-            if (f.id === "employee_count") {
+            if (f.id.includes("employee_count") || f.id.includes("company_headcount")) {
               return { ...f, name: "Company Size / Employee" }
             }
-            // Also ensure new backend filters are named correctly if not already
-            if (f.id === "company_headcount" || f.id === "company_headcount_contact") {
-              return { ...f, name: "Company Size / Employee" }
+            if (f.id === "company_revenue" || f.id === "company_revenue_range") {
+              return { ...f, name: "Company Revenue" }
+            }
+            if (f.id === "company_name_company") {
+              return { ...f, name: "Company Name" }
+            }
+            if (f.id === "company_domain_company") {
+              return { ...f, name: "Company Domain" }
             }
             return f
           })
@@ -241,8 +269,6 @@ export const Filters = () => {
         return { ...group, filters }
       })
       .filter((group) => group.filters.length > 0)
-
-    // Ensure we have a Company Name filter if it wasn't there (mapped from existing or injected)
 
     return groups
   }, [filterGroups, isPeoplePage])
@@ -264,7 +290,7 @@ export const Filters = () => {
       <Card className="mt-4 max-h-[calc(100vh-200px)] min-h-0 min-w-full overflow-auto  rounded-[10px] border bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
         <div className="mb-4 flex items-center justify-between border-b pb-4">
           <span className="flex items-center gap-1 text-sm font-medium text-gray-950">
-            <Funnel /> Filter
+            <Filter /> Filter
           </span>
           {appliedCount > 0 && (
             <div className="flex size-4 items-center justify-center rounded-full border border-blue-500 bg-blue-500 p-0.5">
@@ -294,8 +320,9 @@ export const Filters = () => {
                 .map((filter) => (
                   <div key={filter.id}>
                     <div
-                      className={`border-b border-gray-100 dark:border-gray-800/50 ${expandedSections[filter.id] ? "bg-[#F7F7F7] dark:bg-gray-800/80" : "bg-white dark:bg-transparent"
-                        }`}
+                      className={`border-b border-gray-100 dark:border-gray-800/50 ${
+                        expandedSections[filter.id] ? "bg-[#F7F7F7] dark:bg-gray-800/80" : "bg-white dark:bg-transparent"
+                      }`}
                     >
                       <SectionHeader title={filter.name} expanded={expandedSections[filter.id]} onClick={() => dispatch(toggleSection(filter.id))} />
                       {!!expandedSections[filter.id] && (
@@ -303,6 +330,16 @@ export const Filters = () => {
                           {/* Custom Components Rendering */}
                           {["industry", "company_industries"].includes(filter.id) ? (
                             <IndustryFilter />
+                          ) : filter.id === "job_title" ? (
+                            <JobTitleFilter />
+                          ) : filter.id === "departments" ? (
+                            <DepartmentFilter />
+                          ) : filter.id === "contact_location" ? (
+                            <LocationFilter scope="contact" />
+                          ) : ["company_location", "company_headquarters"].includes(filter.id) ? (
+                            <LocationFilter scope="company" />
+                          ) : filter.id === "technologies" ? (
+                            <TechnologyFilter />
                           ) : (
                             <>
                               {["company_domain_company", "company_domain_contact", "company_name_company"].includes(filter.id) && (
@@ -400,8 +437,9 @@ export const Filters = () => {
 
               {group.group_name.toLowerCase() === "personal" && (
                 <div
-                  className={`border-b border-gray-100 dark:border-gray-800/50 ${expandedSections[personalSectionId] ? "bg-[#F7F7F7] dark:bg-gray-800/80" : "bg-white dark:bg-transparent"
-                    }`}
+                  className={`border-b border-gray-100 dark:border-gray-800/50 ${
+                    expandedSections[personalSectionId] ? "bg-[#F7F7F7] dark:bg-gray-800/80" : "bg-white dark:bg-transparent"
+                  }`}
                 >
                   <SectionHeader
                     title="Years of Experience"

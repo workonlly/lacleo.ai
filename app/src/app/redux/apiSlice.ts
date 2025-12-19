@@ -30,17 +30,6 @@ export const accountBaseQuery = fetchBaseQuery({
   }
 })
 
-// export const aiBaseQuery = fetchBaseQuery({
-//   baseUrl: AI_HOST as string,
-//   prepareHeaders: (headers, { getState }) => {
-//     const state = getState() as TRootState
-//     const token = state.setting.token
-//     if (token) headers.set("authorization", `Bearer ${token}`)
-//     headers.set("Content-Type", "application/json")
-//     return headers
-//   }
-// })
-
 export const aiBaseQuery = fetchBaseQuery({
   baseUrl: AI_HOST as string,
   credentials: "include",

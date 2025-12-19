@@ -34,7 +34,7 @@ const SaveFilter = ({ open, onOpenChange, entityType = "contact" }: SaveFilterPr
   const savedSearches = useMemo(() => data?.data || [], [data])
 
   const filteredSearches = savedSearches.filter((search) => search.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  const selectedFilterName = savedSearches.find(s => s.id === selectedFilterId)?.name
+  const selectedFilterName = savedSearches.find((s) => s.id === selectedFilterId)?.name
 
   const handleSave = async () => {
     const filters = {
@@ -101,8 +101,9 @@ const SaveFilter = ({ open, onOpenChange, entityType = "contact" }: SaveFilterPr
                   className="sr-only"
                 />
                 <div
-                  className={`size-4 rounded-full border-2 transition-all ${searchMode === "new" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
-                    }`}
+                  className={`size-4 rounded-full border-2 transition-all ${
+                    searchMode === "new" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
+                  }`}
                 >
                   {searchMode === "new" && <div className="absolute inset-0 m-[3px] rounded-full bg-white" />}
                 </div>
@@ -131,8 +132,9 @@ const SaveFilter = ({ open, onOpenChange, entityType = "contact" }: SaveFilterPr
                   className="sr-only"
                 />
                 <div
-                  className={`size-4 rounded-full border-2 transition-all ${searchMode === "modify" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
-                    }`}
+                  className={`size-4 rounded-full border-2 transition-all ${
+                    searchMode === "modify" ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
+                  }`}
                 >
                   {searchMode === "modify" && <div className="absolute inset-0 m-[3px] rounded-full bg-white" />}
                 </div>
@@ -150,8 +152,9 @@ const SaveFilter = ({ open, onOpenChange, entityType = "contact" }: SaveFilterPr
                   role="combobox"
                   aria-expanded={isDropdownOpen}
                   disabled={searchMode !== "modify"}
-                  className={`w-full justify-between font-normal ${searchMode !== "modify" ? "bg-gray-50 opacity-60" : ""} ${!selectedFilterId ? "text-muted-foreground" : ""
-                    }`}
+                  className={`w-full justify-between font-normal ${searchMode !== "modify" ? "bg-gray-50 opacity-60" : ""} ${
+                    !selectedFilterId ? "text-muted-foreground" : ""
+                  }`}
                 >
                   {selectedFilterName || "Select the saved filter to overwrite"}
                   <ChevronDown className={`ml-2 size-4 shrink-0 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />
@@ -210,7 +213,7 @@ const SaveFilter = ({ open, onOpenChange, entityType = "contact" }: SaveFilterPr
             disabled={isSaveDisabled || isLoading}
             className="w-full rounded-lg p-2 text-sm font-medium text-[#5C5C5C]"
           >
-            {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {!!isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
             Save
           </Button>
         </DialogFooter>

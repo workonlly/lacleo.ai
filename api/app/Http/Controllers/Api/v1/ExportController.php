@@ -216,7 +216,7 @@ class ExportController extends Controller
             'fields.phone' => 'sometimes|boolean',
         ]);
 
-        $requestId = $request->header('request_id') ?: strtolower(Str::ulid());
+        $requestId = $request->header('X-Request-Id') ?: ($request->header('request_id') ?: ($request->input('requestId') ?: strtolower(Str::ulid())));
 
         if ($requestId) {
             $existing = \App\Models\CreditTransaction::where('type', 'spend')
@@ -340,11 +340,77 @@ class ExportController extends Controller
             'credit_reserved' => 0,
         ])->credit_balance : 0;
 
+        $downloadUrl = url("/api/billing/export/download/{$requestId}");
+
         return response()->json([
-            'url' => $url,
+            'url' => $downloadUrl,
             'credits_deducted' => (int) $request->attributes->get('credits_required'),
             'remaining_credits' => $remaining,
             'request_id' => $requestId,
+        ]);
+    }
+
+    public function downloadDirect(string $requestId)
+    {
+        $params = \Illuminate\Support\Facades\Cache::get("export_params:{$requestId}");
+        if (!$params) {
+            return response()->json(['error' => 'EXPORT_EXPIRED', 'message' => 'The download link has expired or is invalid.'], 410);
+        }
+
+        $type = $params['type'];
+        $ids = $params['ids'];
+        $fields = $params['fields'];
+        $sanitize = $params['sanitize'];
+        $limit = $params['limit'];
+
+        $contacts = [];
+        if ($type === 'contacts') {
+            $result = Contact::elastic()->index((new Contact())->elasticReadAlias())
+                ->filter(['terms' => ['_id' => $ids]])
+                ->paginate(1, $limit);
+            $contacts = array_map(fn($c) => RecordNormalizer::normalizeContact($c), $result['data']);
+        } else {
+            $companies = array_map(function ($id) {
+                try {
+                    return Company::findInElastic($id);
+                } catch (\Exception $e) {
+                    return null;
+                }
+            }, $ids);
+            $companies = array_values(array_filter($companies));
+            $companiesNorm = array_map(function ($c) {
+                return $c ? RecordNormalizer::normalizeCompany(is_array($c) ? $c : $c->toArray()) : null;
+            }, $companies);
+            $companiesNorm = array_values(array_filter($companiesNorm));
+
+            $builder = Contact::elastic()->index((new Contact())->elasticReadAlias());
+            foreach ($companiesNorm as $company) {
+                if (!empty($company['website'])) {
+                    $builder->should(['match' => ['website' => $company['website']]]);
+                }
+                if (!empty($company['name'])) {
+                    $builder->should(['match' => ['company' => $company['name']]]);
+                }
+            }
+            $builder->setBoolParam('minimum_should_match', 1);
+            $contacts = array_map(fn($c) => RecordNormalizer::normalizeContact($c), $builder->paginate(1, $limit)['data']);
+        }
+
+        $emailSelected = (bool) ($fields['email'] ?? true);
+        $phoneSelected = (bool) ($fields['phone'] ?? true);
+        $companiesNorm = $companiesNorm ?? [];
+
+        return response()->streamDownload(function () use ($type, $contacts, $emailSelected, $phoneSelected, $companiesNorm) {
+            if ($type === 'companies') {
+                echo \App\Exports\ExportCsvBuilder::buildCompaniesCsvDynamic($companiesNorm, $contacts, $emailSelected, $phoneSelected);
+            } else {
+                echo \App\Exports\ExportCsvBuilder::buildContactsCsvDynamic($contacts, $emailSelected, $phoneSelected);
+            }
+        }, 'lacleo_export_' . now()->format('Ymd_His') . '.csv', [
+            'Content-Type' => 'text/csv',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 

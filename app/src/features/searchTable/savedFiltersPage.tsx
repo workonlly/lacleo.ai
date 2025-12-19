@@ -10,12 +10,7 @@ import { setView } from "@/interface/searchTable/view"
 import { format } from "date-fns"
 import { SavedFilter } from "@/interface/searchTable/search"
 import { useToast } from "@/components/ui/use-toast"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 const SavedFiltersPage = () => {
   const { data, isLoading, isFetching } = useGetSavedFiltersQuery({})
@@ -31,10 +26,12 @@ const SavedFiltersPage = () => {
     const filters = filter.filters as { contact?: Record<string, unknown>; company?: Record<string, unknown> }
 
     // Import filters into Redux state
-    dispatch(importFiltersFromDSL({
-      contact: filters.contact || {},
-      company: filters.company || {}
-    }))
+    dispatch(
+      importFiltersFromDSL({
+        contact: filters.contact || {},
+        company: filters.company || {}
+      })
+    )
 
     // Switch to search view
     dispatch(setView("search"))
@@ -80,7 +77,11 @@ const SavedFiltersPage = () => {
   }
 
   if (isLoading) {
-    return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-blue-600" /></div>
+    return (
+      <div className="flex justify-center p-10">
+        <Loader2 className="animate-spin text-blue-600" />
+      </div>
+    )
   }
 
   const filters = data?.data || []
@@ -104,18 +105,24 @@ const SavedFiltersPage = () => {
         // For now, omitting or showing placeholder if needed.
 
         return (
-          <div key={filter.id} className="flex w-full flex-1 justify-between rounded-[12px] border p-4 bg-white hover:border-blue-200 transition-colors">
+          <div
+            key={filter.id}
+            className="flex w-full flex-1 justify-between rounded-[12px] border bg-white p-4 transition-colors hover:border-blue-200"
+          >
             <div className="flex flex-col gap-3.5">
               <div className="flex flex-col gap-[5px]">
                 <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 text-sm font-medium text-gray-950 cursor-pointer hover:underline" onClick={() => handleRunSearch(filter)}>
+                  <span
+                    className="flex cursor-pointer items-center gap-1 text-sm font-medium text-gray-950 hover:underline"
+                    onClick={() => handleRunSearch(filter)}
+                  >
                     {filter.name}
                   </span>
                   <button onClick={() => handleToggleStar(filter)} className="focus:outline-none">
                     {filter.is_starred ? <StarFill className="size-[18px]" /> : <Star className="size-[18px] text-gray-400" />}
                   </button>
                 </div>
-                {filter.description && <span className="text-xs font-normal text-gray-600">{filter.description}</span>}
+                {!!filter.description && <span className="text-xs font-normal text-gray-600">{filter.description}</span>}
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -131,7 +138,7 @@ const SavedFiltersPage = () => {
 
               <div className="flex items-center gap-3.5">
                 <span className="flex items-center gap-1 text-xs font-normal text-gray-600">
-                  <CalendarRange className="size-3.5" /> Created on {format(new Date(filter.created_at), 'MMM d, yyyy')}
+                  <CalendarRange className="size-3.5" /> Created on {format(new Date(filter.created_at), "MMM d, yyyy")}
                 </span>
                 {/* 
                 <span className="flex items-center gap-1 text-xs font-normal text-gray-600">
@@ -154,7 +161,11 @@ const SavedFiltersPage = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="outline" className="flex items-center gap-2 rounded-[10px] p-[10px] text-sm font-medium text-gray-600" onClick={() => handleDuplicate(filter)}>
+              <Button
+                variant="outline"
+                className="flex items-center gap-2 rounded-[10px] p-[10px] text-sm font-medium text-gray-600"
+                onClick={() => handleDuplicate(filter)}
+              >
                 <FileCopy className="size-5" />
                 Duplicate
               </Button>

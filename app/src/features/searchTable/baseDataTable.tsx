@@ -155,8 +155,9 @@ export function DataTable<T>({
           <button
             type="button"
             onClick={() => dispatch(setView("search"))}
-            className={`flex items-center gap-1 rounded-[6px] px-3 py-1.5 text-xs font-medium ${currentView === "search" ? "bg-white text-gray-950" : "text-gray-600 hover:bg-white hover:text-gray-950"
-              }`}
+            className={`flex items-center gap-1 rounded-[6px] px-3 py-1.5 text-xs font-medium ${
+              currentView === "search" ? "bg-white text-gray-950" : "text-gray-600 hover:bg-white hover:text-gray-950"
+            }`}
           >
             <Search className="size-3.5" />
             Search
@@ -164,8 +165,9 @@ export function DataTable<T>({
           <button
             type="button"
             onClick={() => dispatch(setView("savedFilters"))}
-            className={`flex items-center gap-1 rounded-[6px] px-3 py-1.5 text-xs font-medium ${currentView === "savedFilters" ? "bg-white text-gray-950" : "text-gray-600 hover:bg-white hover:text-gray-950"
-              }`}
+            className={`flex items-center gap-1 rounded-[6px] px-3 py-1.5 text-xs font-medium ${
+              currentView === "savedFilters" ? "bg-white text-gray-950" : "text-gray-600 hover:bg-white hover:text-gray-950"
+            }`}
           >
             <Save className="size-3.5" />
             Saved Filters
@@ -224,12 +226,13 @@ export function DataTable<T>({
             </Button>
           )}
         </div>
-      </div >
+      </div>
 
       {currentView === "search" ? (
         <div
-          className={`relative max-h-[calc(100vh-320px)] min-h-0 overflow-auto bg-background/50 backdrop-blur-sm transition-all duration-200 ${fetching ? "opacity-50" : ""
-            }`}
+          className={`relative max-h-[calc(100vh-320px)] min-h-0 overflow-auto bg-background/50 backdrop-blur-sm transition-all duration-200 ${
+            fetching ? "opacity-50" : ""
+          }`}
         >
           {!!fetching && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/30">
@@ -256,8 +259,9 @@ export function DataTable<T>({
                   return (
                     <TableHead key={column.field as string} className={`${column.width} rounded-r-lg py-3 text-xs font-medium text-muted-foreground`}>
                       <div
-                        className={`flex items-center gap-2 ${isSortable && !fetching ? "group cursor-pointer" : ""} ${fetching ? "pointer-events-none" : ""
-                          }`}
+                        className={`flex items-center gap-2 ${isSortable && !fetching ? "group cursor-pointer" : ""} ${
+                          fetching ? "pointer-events-none" : ""
+                        }`}
                         onClick={() => isSortable && !fetching && handleSort(column.field as string)}
                       >
                         {column.title}
@@ -321,26 +325,20 @@ export function DataTable<T>({
         <div className="relative max-h-[calc(100vh-260px)] min-h-0 overflow-auto bg-background/50 backdrop-blur-sm">
           <SavedFiltersPage />
         </div>
-      )
-      }
+      )}
 
-      {
-        currentView === "search" && !!pagination && (
-          <Pagination
-            currentPage={pagination.page}
-            lastPage={pagination.lastPage}
-            onPageChange={onPageChange}
-            className={`absolute bottom-0 left-1/2 !mt-2 -translate-x-1/2 bg-transparent transition-opacity duration-200 ${fetching ? "opacity-50" : ""
-              }`}
-          />
-        )
-      }
-      <SaveFilter
-        open={isSaveModalOpen}
-        onOpenChange={(val) => setIsSaveModalOpen(val)}
-        entityType={entityType}
-      />
-    </div >
+      {currentView === "search" && !!pagination && (
+        <Pagination
+          currentPage={pagination.page}
+          lastPage={pagination.lastPage}
+          onPageChange={onPageChange}
+          className={`absolute bottom-0 left-1/2 !mt-2 -translate-x-1/2 bg-transparent transition-opacity duration-200 ${
+            fetching ? "opacity-50" : ""
+          }`}
+        />
+      )}
+      <SaveFilter open={isSaveModalOpen} onOpenChange={(val) => setIsSaveModalOpen(val)} entityType={entityType} />
+    </div>
   )
 }
 

@@ -87,16 +87,16 @@ class RouteServiceProvider extends BaseRouteServiceProvider
         // Export endpoints limiter — protect heavy exports
         RateLimiter::for('export', function (Request $request) {
             $key = optional($request->user())->id ?: $request->ip();
-            return Limit::perMinute(10)->by($key);
+            return Limit::perMinute(60)->by($key);
         });
 
-        
-RateLimiter::for('App\\Models\\User::export', function (Request $request, $user = null) {
-    if ($user && is_object($user) && property_exists($user, 'id')) {
-        return Limit::perMinute(10)->by($user->id);
-    }
-    $key = optional($request->user())->id ?: $request->ip();
-    return Limit::perMinute(10)->by($key);
-});
+
+        RateLimiter::for('App\\Models\\User::export', function (Request $request, $user = null) {
+            if ($user && is_object($user) && property_exists($user, 'id')) {
+                return Limit::perMinute(60)->by($user->id);
+            }
+            $key = optional($request->user())->id ?: $request->ip();
+            return Limit::perMinute(60)->by($key);
+        });
     }
 }

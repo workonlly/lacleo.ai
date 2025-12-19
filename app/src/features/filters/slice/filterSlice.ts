@@ -14,8 +14,8 @@ const initialState: FilterState = {
   }
 }
 
-// Helper: map sectionId to DSL key
-const sectionToKey: Record<string, string> = {
+// Helper: map UI sectionId to DSL key
+export const sectionToKey: Record<string, string> = {
   // Contact filters
   job_title: "job_title",
   departments: "departments",
@@ -28,30 +28,26 @@ const sectionToKey: Record<string, string> = {
   contact_has_email: "has_email",
   contact_has_phone: "has_phone",
 
-  // Company filters (for contact search)
+  // Company filters (context-aware mapping in SearchService handles these)
   company_employee_count: "employee_count",
-  company_revenue_range: "annual_revenue",
+  employee_count: "employee_count",
+  company_revenue_range: "revenue",
+  company_revenue: "revenue",
   company_industries: "industries",
+  industry: "industries",
   company_technologies: "technologies",
+  technologies: "technologies",
   company_headquarters: "locations",
+  company_location: "locations",
   company_founded_year: "founded_year",
   company_domain: "domains",
-  company_has_email: "has_email",
-  company_has_phone: "has_phone",
-  company_location: "locations",
-  company_keywords: "company_keywords",
-
-  // Legacy mappings
-  industry: "industries",
-  technologies: "technologies",
-  employee_count: "employee_count", // UI Section ID -> DSL Key
-  company_headcount: "employee_count",
-  company_headcount_contact: "employee_count",
-  company_revenue: "annual_revenue",
   company_domain_company: "domains",
   company_domain_contact: "domains",
   company_name_company: "company_names",
-  company_name_contact: "company_names"
+  company_name_contact: "company_names",
+  company_has_email: "has_email",
+  company_has_phone: "has_phone",
+  company_keywords: "company_keywords"
 }
 
 function updateActiveFilters(state: FilterState, sectionId: string, item: SelectedFilter, actionType: "add" | "remove", isCompanyFilter: boolean) {
@@ -75,20 +71,16 @@ function getSectionIdFromKey(key: string, isCompanyFilter: boolean): string | nu
     has_phone: "contact_has_phone",
 
     // Company filters
-    employee_count: "company_headcount", // Map standardized 'employee_count' to UI ID
-    annual_revenue: "company_revenue", // Map standardized 'annual_revenue' to UI ID
-    revenue: "company_revenue", // Fallback alias
-    industries: "company_industries",
-    technologies: "company_technologies",
+    employee_count: "employee_count",
+    revenue: "company_revenue_range",
+    annual_revenue: "company_revenue_range",
+    industries: "industry",
+    technologies: "technologies",
     founded_year: "company_founded_year",
-    domains: "company_domain",
-    company_names: "company_name_contact",
+    domains: "company_domain_company",
+    company_names: "company_name_company",
     company_keywords: "company_keywords",
-
-    // Self-mappings
-    company_headcount: "company_headcount",
-    company_revenue: "company_revenue",
-    company_revenue_range: "company_revenue_range"
+    industry: "industry"
   }
   return keyToSection[key] || null
 }

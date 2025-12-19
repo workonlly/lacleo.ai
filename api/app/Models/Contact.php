@@ -285,6 +285,12 @@ class Contact extends Model
                 'index' => true,
                 'similarity' => 'dot_product',
             ],
+            'technologies_normalized' => [
+                'type' => 'keyword',
+            ],
+            'company_obj.technologies_normalized' => [
+                'type' => 'keyword',
+            ],
         ];
     }
 
@@ -380,6 +386,13 @@ class Contact extends Model
             }
         }
 
+        $depts = (array) ($this->departments ?? []);
+        $normalizedDepts = array_values(array_unique(array_filter(array_map(function ($d) {
+            $s = mb_strtolower(trim((string) $d));
+            $s = preg_replace('/[\p{P}\p{S}]+/u', ' ', $s);
+            return trim(preg_replace('/\s+/u', ' ', $s));
+        }, $depts), 'strlen')));
+
         return [
             'job_title' => $title,
             'normalized_title' => $normalized,
@@ -387,6 +400,7 @@ class Contact extends Model
             'title_synonyms' => $title,
             'seniority_level' => $seniority,
             'department' => $department,
+            'department_normalized' => $normalizedDepts,
         ];
     }
 

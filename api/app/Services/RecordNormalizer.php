@@ -164,7 +164,7 @@ class RecordNormalizer
             $employees = (int) preg_replace('/[^0-9]/', '', $employees);
         }
 
-        $technologies = $doc['technologies'] ?? $doc['company_technologies'] ?? [];
+        $technologies = $doc['technologies'] ?? $doc['company_technologies'] ?? $doc['tech_stack'] ?? [];
         if (is_string($technologies)) {
             $technologies = [$technologies];
         }
@@ -281,6 +281,54 @@ class RecordNormalizer
     public static function hasPhone(array $contact): bool
     {
         return self::getPrimaryPhone($contact) !== null;
+    }
+
+    public static function normalizeTechnology(string $tech): string
+    {
+        $tech = trim(mb_strtolower($tech));
+        if ($tech === '') {
+            return '';
+        }
+
+        $map = [
+            'amazon web services' => 'aws',
+            'aws cloud' => 'aws',
+            'google cloud' => 'gcp',
+            'google cloud platform' => 'gcp',
+            'microsoft azure' => 'azure',
+            'reactjs' => 'react',
+            'react.js' => 'react',
+            'vuejs' => 'vue',
+            'angularjs' => 'angular',
+            'node' => 'nodejs',
+            'node.js' => 'nodejs',
+            'php7' => 'php',
+            'php8' => 'php',
+            'wp' => 'wordpress',
+            'wordpress cms' => 'wordpress',
+            'shopify plus' => 'shopify',
+            'sf' => 'salesforce',
+            'salesforce crm' => 'salesforce',
+            'hubspot crm' => 'hubspot',
+            'mongo' => 'mongodb',
+            'my sql' => 'mysql',
+            'postgres' => 'postgresql',
+        ];
+
+        return $map[$tech] ?? $tech;
+    }
+
+    public static function normalizeTechnologies(array $techs): array
+    {
+        $normalized = [];
+        foreach ($techs as $tech) {
+            $n = self::normalizeTechnology((string) $tech);
+            if ($n !== '') {
+                $normalized[] = $n;
+            }
+        }
+
+        return array_values(array_unique($normalized));
     }
 
     private static function containsEmail(array $arr, string $email): bool

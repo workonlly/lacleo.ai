@@ -121,15 +121,32 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
       [FILTER_KEYS.REVENUE]: (v) => push(FILTER_KEYS.REVENUE, FILTER_LABELS[FILTER_KEYS.REVENUE], formatRange(v)),
       [FILTER_KEYS.EXPERIENCE]: (v) => push(FILTER_KEYS.EXPERIENCE, FILTER_LABELS[FILTER_KEYS.EXPERIENCE], formatRange(v)),
       [FILTER_KEYS.CONTACT_LOCATION]: (v) => {
-        const loc = v as { country?: string[] | string; state?: string[] | string; city?: string[] | string } | unknown
-        // Handle complex location object if strictly structured
-        if (loc && typeof loc === "object" && !("include" in (loc as Record<string, unknown>))) {
-          const l = loc as { country?: unknown; state?: unknown; city?: unknown }
-          extractValues(l.country).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location (Country)", x))
-          extractValues(l.state).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location (State)", x))
-          extractValues(l.city).forEach((x) => push(FILTER_KEYS.CONTACT_CITY, "Location (City)", x))
+        const loc = v as {
+          type?: string
+          include?: { countries?: unknown; states?: unknown; cities?: unknown }
+          exclude?: { countries?: unknown; states?: unknown; cities?: unknown }
+          country?: unknown
+          state?: unknown
+          city?: unknown
+        }
+
+        const toValues = (val: unknown): string[] => {
+          if (!val) return []
+          if (Array.isArray(val)) return val.map(String)
+          return [String(val)]
+        }
+
+        if (loc && typeof loc === "object") {
+          const include = loc.include || {}
+
+          // New structured shape
+          toValues((include as { countries?: unknown }).countries || loc.country).forEach((x) =>
+            push(FILTER_KEYS.CONTACT_LOCATION, "Location (Country)", x)
+          )
+          toValues((include as { states?: unknown }).states || loc.state).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location (State)", x))
+          toValues((include as { cities?: unknown }).cities || loc.city).forEach((x) => push(FILTER_KEYS.CONTACT_CITY, "Location (City)", x))
         } else {
-          // Fallback for flat include
+          // Fallback for flat include arrays/strings
           extractValues(v).forEach((x) => push(FILTER_KEYS.CONTACT_LOCATION, "Location", x))
         }
       },
@@ -346,9 +363,18 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
 
         const dsl: { contact: Record<string, unknown>; company: Record<string, unknown> } = { contact: {}, company: {} }
         const ensureInclude = (bucket: Record<string, unknown>, key: string, value: string) => {
-          const existing = (bucket[key] as { include?: string[] } | undefined) || {}
+          const existing = (bucket[key] as { include?: string[]; exclude?: string[]; presence?: string } | undefined) || {}
           const include = Array.isArray(existing.include) ? existing.include : []
           bucket[key] = { ...existing, include: Array.from(new Set([...include, value])) }
+        }
+        const ensureExclude = (bucket: Record<string, unknown>, key: string, value: string) => {
+          const existing = (bucket[key] as { include?: string[]; exclude?: string[]; presence?: string } | undefined) || {}
+          const exclude = Array.isArray(existing.exclude) ? existing.exclude : []
+          bucket[key] = { ...existing, exclude: Array.from(new Set([...exclude, value])) }
+        }
+        const setLocationPresence = (bucket: Record<string, unknown>, presence: "known" | "unknown") => {
+          const existing = (bucket["locations"] as { include?: string[]; exclude?: string[]; presence?: string } | undefined) || {}
+          bucket["locations"] = { ...existing, presence }
         }
         const setRange = (bucket: Record<string, unknown>, key: string, val: unknown) => {
           const range: { min?: number; max?: number } = {}
@@ -373,10 +399,44 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
           } else if (key === "years_experience" || key === "years_of_experience") {
             setRange(dsl.contact, "experience_years", val)
           } else if (key === "location") {
-            const loc = val as { country?: string[]; state?: string[]; city?: string[] }
-            if (loc.country) loc.country.forEach((v) => ensureInclude(dsl.company, "locations", v))
-            if (loc.state) loc.state.forEach((v) => ensureInclude(dsl.company, "locations", v))
-            if (loc.city) loc.city.forEach((v) => ensureInclude(dsl.contact, "city", v))
+            const raw = val as {
+              type?: "contact" | "company" | null
+              include?: { countries?: unknown; states?: unknown; cities?: unknown }
+              exclude?: { countries?: unknown; states?: unknown; cities?: unknown }
+              known?: boolean
+              unknown?: boolean
+            }
+
+            const entity = response.entity
+            const inferredType: "contact" | "company" =
+              raw?.type === "company" || raw?.type === "contact" ? raw.type : entity === "companies" ? "company" : "contact"
+
+            const targetBucket = inferredType === "company" ? dsl.company : dsl.contact
+
+            const toArray = (v: unknown): string[] => {
+              if (!v) return []
+              if (Array.isArray(v)) return v.map(String)
+              return [String(v)]
+            }
+
+            const include = raw?.include || {}
+            const exclude = raw?.exclude || {}
+
+            toArray((include as { countries?: unknown }).countries).forEach((v) => ensureInclude(targetBucket, "country", v))
+            toArray((include as { states?: unknown }).states).forEach((v) => ensureInclude(targetBucket, "state", v))
+            toArray((include as { cities?: unknown }).cities).forEach((v) => ensureInclude(targetBucket, "city", v))
+
+            toArray((exclude as { countries?: unknown }).countries).forEach((v) => ensureExclude(targetBucket, "country", v))
+            toArray((exclude as { states?: unknown }).states).forEach((v) => ensureExclude(targetBucket, "state", v))
+            toArray((exclude as { cities?: unknown }).cities).forEach((v) => ensureExclude(targetBucket, "city", v))
+
+            const known = raw?.known === true
+            const unknown = raw?.unknown === true
+            if (known && !unknown) {
+              setLocationPresence(targetBucket, "known")
+            } else if (unknown && !known) {
+              setLocationPresence(targetBucket, "unknown")
+            }
           } else if (key === "location.country") {
             ;(Array.isArray(val) ? val : [val]).forEach((v) => ensureInclude(dsl.company, "locations", String(v)))
           } else if (key === "location.city" || key === "city") {

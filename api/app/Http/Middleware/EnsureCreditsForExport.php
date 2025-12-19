@@ -22,7 +22,7 @@ class EnsureCreditsForExport
     public function handle(Request $request, Closure $next)
     {
         $user = $request->user();
-        if (! $user) {
+        if (!$user) {
             return response()->json(['error' => 'UNAUTHENTICATED'], 401);
         }
         // Admins bypass credit enforcement
@@ -43,14 +43,14 @@ class EnsureCreditsForExport
             'ids' => 'required|array|min:1',
             'ids.*' => 'string',
             'sanitize' => 'sometimes|boolean',
-            'limit' => 'sometimes|integer|min:1|max:'.self::MAX_CONTACTS,
+            'limit' => 'sometimes|integer|min:1|max:' . self::MAX_CONTACTS,
             'fields' => 'sometimes|array',
             'fields.email' => 'sometimes|boolean',
             'fields.phone' => 'sometimes|boolean',
         ]);
 
         [$contactsIncluded, $emailCount, $phoneCount, $rows] = $this->computeCounts($payload['type'], $payload['ids'], $request);
-        if (! empty($payload['limit'])) {
+        if (!empty($payload['limit'])) {
             $contactsIncluded = min($contactsIncluded, (int) $payload['limit']);
             // Recompute counts for limited subset when not sanitized
             if (empty($payload['sanitize'])) {
@@ -62,18 +62,18 @@ class EnsureCreditsForExport
                 $rows = $payload['type'] === 'contacts' ? $contactsIncluded : max($contactsIncluded, count($payload['ids']));
             }
         }
-        if (! empty($payload['sanitize'])) {
+        if (!empty($payload['sanitize'])) {
             $emailCount = 0;
             $phoneCount = 0;
         }
 
         // Apply selected field toggles: zero-out counts for deselected fields
-        if (! empty($payload['fields']) && is_array($payload['fields'])) {
+        if (!empty($payload['fields']) && is_array($payload['fields'])) {
             $f = $payload['fields'];
-            if (array_key_exists('email', $f) && ! (bool) $f['email']) {
+            if (array_key_exists('email', $f) && !(bool) $f['email']) {
                 $emailCount = 0;
             }
-            if (array_key_exists('phone', $f) && ! (bool) $f['phone']) {
+            if (array_key_exists('phone', $f) && !(bool) $f['phone']) {
                 $phoneCount = 0;
             }
         }
@@ -84,7 +84,7 @@ class EnsureCreditsForExport
 
         $creditsRequired = ($emailCount * self::EMAIL_COST) + ($phoneCount * self::PHONE_COST);
 
-        $requestId = $request->header('request_id');
+        $requestId = $request->header('X-Request-Id') ?: ($request->header('request_id') ?: $request->input('requestId'));
         if ($requestId) {
             $exists = CreditTransaction::where('workspace_id', $workspace->id)
                 ->where('type', 'spend')
@@ -104,7 +104,7 @@ class EnsureCreditsForExport
             }
         }
 
-        if (! $isAdmin && ($workspace->credit_balance ?? 0) < $creditsRequired && $creditsRequired > 0) {
+        if (!$isAdmin && ($workspace->credit_balance ?? 0) < $creditsRequired && $creditsRequired > 0) {
             return response()->json([
                 'error' => 'INSUFFICIENT_CREDITS',
                 'email_count' => $emailCount,
@@ -136,6 +136,16 @@ class EnsureCreditsForExport
             });
         }
 
+        $cacheKey = "export_params:{$requestId}";
+        \Illuminate\Support\Facades\Cache::put($cacheKey, [
+            'type' => $payload['type'],
+            'ids' => $payload['ids'],
+            'fields' => $payload['fields'] ?? [],
+            'sanitize' => !empty($payload['sanitize']),
+            'limit' => $payload['limit'] ?? self::MAX_CONTACTS,
+            'user_id' => $user->id,
+        ], 3600);
+
         $request->attributes->add([
             'export_email_count' => $emailCount,
             'export_phone_count' => $phoneCount,
@@ -143,6 +153,7 @@ class EnsureCreditsForExport
             'export_companies_included' => $payload['type'] === 'companies' ? count($payload['ids']) : 0,
             'credits_required' => $creditsRequired,
             'export_rows' => $payload['type'] === 'contacts' ? $contactsIncluded : $rows,
+            'export_cache_key' => $cacheKey,
         ]);
 
         return $next($request);
@@ -153,7 +164,6 @@ class EnsureCreditsForExport
         if ($type === 'contacts') {
             $result = Contact::elastic()
                 ->filter(['terms' => ['_id' => $ids]])
-                ->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone', 'mobile_number', 'direct_number'])
                 ->paginate(1, $limit);
             $data = $result['data'] ?? [];
             $contactsIncluded = count($data);
@@ -161,10 +171,10 @@ class EnsureCreditsForExport
             $phoneCount = 0;
             foreach ($data as $c) {
                 $normalized = \App\Services\RecordNormalizer::normalizeContact($c);
-                if (\App\Services\RecordNormalizer::hasEmail($normalized)) {
+                if (!empty($normalized['emails'])) {
                     $emailCount++;
                 }
-                if (\App\Services\RecordNormalizer::hasPhone($normalized)) {
+                if (!empty($normalized['phones'])) {
                     $phoneCount++;
                 }
             }
@@ -181,45 +191,41 @@ class EnsureCreditsForExport
         $companies = array_values(array_filter($companies));
         $builder = Contact::elastic();
         foreach ($companies as $company) {
-            if (! empty($company['website'])) {
+            if (!empty($company['website'])) {
                 $builder->should(['match' => ['website' => $company['website']]]);
             }
-            if (! empty($company['company'])) {
+            if (!empty($company['company'])) {
                 $builder->should(['match' => ['company' => $company['company']]]);
             }
         }
         $builder->setBoolParam('minimum_should_match', 1);
-        $data = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone', 'mobile_number', 'direct_number'])->paginate(1, $limit)['data'] ?? [];
+        $data = $builder->paginate(1, $limit)['data'] ?? [];
         $contactsIncluded = count($data);
         $emailCount = 0;
         $phoneCount = 0;
         foreach ($data as $c) {
             $norm = \App\Services\RecordNormalizer::normalizeContact($c);
-            if (\App\Services\RecordNormalizer::hasEmail($norm)) {
+            if (!empty($norm['emails'])) {
                 $emailCount++;
             }
-            if (\App\Services\RecordNormalizer::hasPhone($norm)) {
+            if (!empty($norm['phones'])) {
                 $phoneCount++;
             }
         }
         $companyPhone = 0;
-        $companyEmail = 0;
+        $contactEmail = 0;
         foreach ($companies as $company) {
-            if (! empty($company['phone_number']) || ! empty($company['company_phone'])) {
+            $normComp = \App\Services\RecordNormalizer::normalizeCompany(is_array($company) ? $company : $company->toArray());
+            if (!empty($normComp['company_phone'])) {
                 $companyPhone++;
             }
-            // Prefer normalized work_email when present; otherwise scan emails list
-            if (! empty($company['work_email']) || ! empty($company['company_email'])) {
-                $companyEmail++;
-            } elseif (! empty($company['emails']) && is_array($company['emails'])) {
-                foreach ($company['emails'] as $e) {
-                    if ((is_string($e) && $e) || (is_array($e) && ! empty($e['email']))) { $companyEmail++; break; }
-                }
+            if (!empty($normComp['work_email'])) {
+                $contactEmail++;
             }
         }
 
         $phoneCount += $companyPhone;
-        $emailCount += $companyEmail;
+        $emailCount += $contactEmail;   
 
         return [$contactsIncluded, $emailCount, $phoneCount];
     }
@@ -240,7 +246,7 @@ class EnsureCreditsForExport
             $base = Contact::elastic()->filter(['terms' => ['_id' => $ids]]);
             $page = 1;
             $per = 1000;
-            $result = $base->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone', 'mobile_number', 'direct_number'])->paginate($page, $per);
+            $result = $base->paginate($page, $per);
             $contactsIncluded = $result['total'] ?? count($result['data'] ?? []);
             $emailCount = 0;
             $phoneCount = 0;
@@ -248,10 +254,10 @@ class EnsureCreditsForExport
             while (true) {
                 foreach (($result['data'] ?? []) as $c) {
                     $norm = \App\Services\RecordNormalizer::normalizeContact($c);
-                    if (\App\Services\RecordNormalizer::hasEmail($norm)) {
+                    if (!empty($norm['emails'])) {
                         $emailCount++;
                     }
-                    if (\App\Services\RecordNormalizer::hasPhone($norm)) {
+                    if (!empty($norm['phones'])) {
                         $phoneCount++;
                     }
                 }
@@ -259,7 +265,7 @@ class EnsureCreditsForExport
                     break;
                 }
                 $page++;
-                $result = $base->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone', 'mobile_number', 'direct_number'])->paginate($page, $per);
+                $result = $base->paginate($page, $per);
             }
 
             return [$contactsIncluded, $emailCount, $phoneCount, $contactsIncluded];
@@ -276,10 +282,10 @@ class EnsureCreditsForExport
 
         $builder = Contact::elastic();
         foreach ($companies as $company) {
-            if (! empty($company['website'])) {
+            if (!empty($company['website'])) {
                 $builder->should(['match' => ['website' => $company['website']]]);
             }
-            if (! empty($company['company'])) {
+            if (!empty($company['company'])) {
                 $builder->should(['match' => ['company' => $company['company']]]);
             }
         }
@@ -287,7 +293,7 @@ class EnsureCreditsForExport
 
         $page = 1;
         $per = 1000;
-        $result = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone', 'mobile_number', 'direct_number'])->paginate($page, $per);
+        $result = $builder->paginate($page, $per);
         $contactsIncluded = $result['total'] ?? count($result['data'] ?? []);
         $emailCount = 0;
         $phoneCount = 0;
@@ -295,10 +301,10 @@ class EnsureCreditsForExport
         while (true) {
             foreach (($result['data'] ?? []) as $c) {
                 $norm = \App\Services\RecordNormalizer::normalizeContact($c);
-                if (\App\Services\RecordNormalizer::hasEmail($norm)) {
+                if (!empty($norm['emails'])) {
                     $emailCount++;
                 }
-                if (\App\Services\RecordNormalizer::hasPhone($norm)) {
+                if (!empty($norm['phones'])) {
                     $phoneCount++;
                 }
             }
@@ -306,25 +312,22 @@ class EnsureCreditsForExport
                 break;
             }
             $page++;
-            $result = $builder->select(['emails', 'email', 'work_email', 'personal_email', 'phone_numbers', 'phone', 'mobile_number', 'direct_number'])->paginate($page, $per);
+            $result = $builder->paginate($page, $per);
         }
 
         $companyPhone = 0;
-        $companyEmail = 0;
+        $contactEmail = 0;
         foreach ($companies as $company) {
-            if (! empty($company['phone_number']) || ! empty($company['company_phone'])) {
+            $normComp = \App\Services\RecordNormalizer::normalizeCompany(is_array($company) ? $company : $company->toArray());
+            if (!empty($normComp['company_phone'])) {
                 $companyPhone++;
             }
-            if (! empty($company['email'])) {
-                $companyEmail++;
-            } elseif (! empty($company['emails']) && is_array($company['emails'])) {
-                foreach ($company['emails'] as $e) {
-                    if ((is_string($e) && $e) || (is_array($e) && ! empty($e['email']))) { $companyEmail++; break; }
-                }
+            if (!empty($normComp['work_email'])) {
+                $contactEmail++;
             }
         }
         $phoneCount += $companyPhone;
-        $emailCount += $companyEmail;
+        $emailCount += $contactEmail;
 
         $rows = max($contactsIncluded, count($ids));
 

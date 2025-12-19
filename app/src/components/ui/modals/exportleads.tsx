@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useAppDispatch } from "@/app/hooks/reduxHooks"
 import { setCreditUsageOpen } from "@/features/settings/slice/settingSlice"
 import { useExportEstimateMutation, useExportCreateMutation } from "@/features/searchTable/slice/apiSlice"
+import { useToast } from "../use-toast"
 
 type ExportLeadsProps = {
   open: boolean
@@ -56,6 +57,7 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
   } | null>(null)
   const [estimateExport, { isLoading: estimating }] = useExportEstimateMutation()
   const [createExport, { isLoading: exporting }] = useExportCreateMutation()
+  const { toast } = useToast()
   const dispatch = useAppDispatch()
 
   const hasSelectedData = emailSelected || phoneSelected
@@ -144,6 +146,7 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
         fields: { email: emailSelected, phone: phoneSelected },
         sanitize: !hasSelectedData,
         limit: exportCount,
+        download: true,
         requestId: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`
       }).unwrap()
       if (res?.url) {
@@ -157,6 +160,11 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
         dispatch(setCreditUsageOpen(true))
         return
       }
+      toast({
+        title: "Export failed",
+        description: (err as { data?: { message?: string } })?.data?.message || "Something went wrong. Please try again.",
+        variant: "destructive"
+      })
     }
   }
 
@@ -308,7 +316,7 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
             disabled={exporting || estimating || exportCount <= 0 || insufficient}
             onClick={handleExport}
           >
-            {exporting ? "Exporting..." : "Export"}
+            {exporting ? "Exporting..." : creditsRequired === 0 ? "Export for Free" : "Export"}
           </Button>
         </DialogFooter>
       </DialogContent>

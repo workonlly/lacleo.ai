@@ -22,7 +22,7 @@ import { Eye, Mail, Phone, User2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filterSlice"
-import { setLastResultCount, selectSemanticQuery,  startSearch } from "../aisearch/slice/searchslice"
+import { setLastResultCount, selectSemanticQuery, startSearch } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery, useCompanyLogoQuery } from "./slice/apiSlice"
 import { CompanyAttributes } from "@/interface/searchTable/search"
@@ -53,7 +53,7 @@ const ContactCompanyCell = ({ row }: { row: ContactAttributes }) => {
 const PhoneCountCell = ({ contact }: { contact: ContactAttributes }) => {
   // Count contact's own phones
   let phoneCount = 0
-  
+
   if (Array.isArray(contact.phone_numbers) && contact.phone_numbers.length > 0) {
     phoneCount += contact.phone_numbers.length
   } else if (contact.phone_number) {
@@ -61,25 +61,28 @@ const PhoneCountCell = ({ contact }: { contact: ContactAttributes }) => {
   } else if ((contact as any)?.has_contact_phone === true) {
     phoneCount += 1
   }
-  
+
   // Fetch company data to check for company phone
   const normalizedDomain = (contact.website || "")
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .trim()
   const companySearchUrl = buildSearchUrl({ page: 1, count: 1 }, { searchTerm: normalizedDomain || contact.company || "" })
-  const { data: companySearchData } = useSearchContactsQuery({ type: "company", buildParams: companySearchUrl }, { skip: !normalizedDomain && !contact.company })
-  
+  const { data: companySearchData } = useSearchContactsQuery(
+    { type: "company", buildParams: companySearchUrl },
+    { skip: !normalizedDomain && !contact.company }
+  )
+
   const resolvedCompany: CompanyAttributes | null =
     ((companySearchData as { data?: Array<{ attributes: CompanyAttributes }> } | undefined)?.data?.[0]?.attributes as
       | CompanyAttributes
       | undefined) || null
-  
+
   const companyPhone = resolvedCompany?.company_phone || resolvedCompany?.phone_number || null
   if (companyPhone) {
     phoneCount += 1
   }
-  
+
   return phoneCount
 }
 
@@ -319,8 +322,7 @@ export function ContactsTable() {
         // const phoneCount = row.phone_number ? 1 : 0
         // const emailCount = row.email ? 1 : 0
         const emailCount = Array.isArray(row.emails) ? row.emails.length : 0
-    
-        
+
         return (
           <HoverCard
             className=""

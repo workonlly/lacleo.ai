@@ -59,7 +59,21 @@ NORMALIZED FIELDS YOU ARE ALLOWED TO USE:
     "company_names": { "include": [string], "exclude": [string] },  
     "employee_count": { "min": num, "max": num }, 
     "revenue": { "min": num, "max": num },     
-    "locations": { "include": [string], "exclude": [string] },      
+    "location": {
+      "type": "contact" | "company" | null,
+      "include": {
+        "countries": [string],
+        "states": [string],
+        "cities": [string]
+      },
+      "exclude": {
+        "countries": [string],
+        "states": [string],
+        "cities": [string]
+      },
+      "known": boolean,
+      "unknown": boolean
+    },
     "technologies": { "include": [string], "exclude": [string] },   
     "industries": { "include": [string], "exclude": [string] },     
     "company_keywords": { "include": [string], "exclude": [string] },
@@ -80,7 +94,12 @@ JSON:
     "entity": "contacts",
     "filters": {
         "departments": { "include": ["Human Resources"] },
-        "locations": { "include": ["United States"] }
+        "location": {
+            "type": "contact",
+            "include": { "countries": ["United States"] },
+            "known": true,
+            "unknown": false
+        }
     },
     "summary": "Searching for HR professionals in the United States."
 }
@@ -123,10 +142,36 @@ JSON:
     "entity": "contacts",
     "filters": {
         "job_title": { "include": ["Marketing Manager"] },
-        "locations": { "include": ["United Kingdom"] },
+        "location": {
+            "type": "contact",
+            "include": { "countries": ["United Kingdom"] },
+            "known": true,
+            "unknown": false
+        },
         "years_of_experience": { "min": 5 }
     },
     "summary": "Searching for Marketing Managers in the UK with 5+ years of experience."
+}
+
+User: "US companies headquartered in California but not in San Francisco"
+JSON:
+{
+    "entity": "companies",
+    "filters": {
+        "location": {
+            "type": "company",
+            "include": {
+                "countries": ["United States"],
+                "states": ["California"]
+            },
+            "exclude": {
+                "cities": ["San Francisco"]
+            },
+            "known": true,
+            "unknown": false
+        }
+    },
+    "summary": "Searching for US companies in California excluding San Francisco."
 }
 
 User: "Find bootstrapped biotech startups in SF"
@@ -134,7 +179,12 @@ JSON:
 {
     "entity": "companies",
     "filters": {
-        "locations": { "include": ["San Francisco"] }
+        "location": {
+            "type": "company",
+            "include": { "cities": ["San Francisco"] },
+            "known": true,
+            "unknown": false
+        }
     },
     "custom": [
         { "label": "Status", "value": "Bootstrapped", "type": "custom" },
