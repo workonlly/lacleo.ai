@@ -55,6 +55,8 @@ class ExportController extends Controller
                     // Decode contact IDs
                     $decodedIds = array_map(fn($id) => self::decodeCompanyId($id), $validated['ids']);
                     
+                    Log::info('ExportController preview - contacts', ['ids_input' => $validated['ids'], 'ids_decoded' => $decodedIds]);
+                    
                     // If IDs array is empty, fetch bulk records; otherwise filter by IDs
                     if (empty($decodedIds)) {
                         $base = Contact::elastic()->index((new Contact())->elasticReadAlias());
@@ -64,10 +66,22 @@ class ExportController extends Controller
                     
                     if (!empty($validated['limit'])) {
                         $data = $base->paginate(1, (int) $validated['limit'])['data'] ?? [];
+                        Log::info('ExportController preview - contacts fetched', ['count' => count($data), 'limit' => $validated['limit']]);
                         $contactsIncluded = count($data);
                         foreach ($data as $c) {
-                            $norm = RecordNormalizer::normalizeContact($c);
-                            // Only count phones for contact type - emails are free
+                            $source = $c['_source'] ?? $c;
+                            Log::info('Contact source structure', ['has_emails' => isset($source['emails']), 'has_phones' => isset($source['phone_numbers'])]);
+                            $norm = RecordNormalizer::normalizeContact($source);
+                            Log::info('Normalized contact data', ['emails_count' => count($norm['emails'] ?? []), 'phones_count' => count($norm['phones'] ?? []), 'emails' => $norm['emails'] ?? [], 'phones' => $norm['phones'] ?? []]);
+                            // Count work emails (1 credit each)
+                            if (!empty($norm['emails'])) {
+                                foreach ($norm['emails'] as $e) {
+                                    if (isset($e['type']) && $e['type'] === 'work' && !empty($e['email'])) {
+                                        $emailCount++;
+                                    }
+                                }
+                            }
+                            // Count phones (4 credits each)
                             if (!empty($norm['phones'])) {
                                 $phoneCount++;
                             }
@@ -81,8 +95,17 @@ class ExportController extends Controller
                         while (true) {
                             $data = $result['data'] ?? [];
                             foreach ($data as $c) {
-                                $norm = RecordNormalizer::normalizeContact($c);
-                                // Only count phones for contact type - emails are free
+                                $source = $c['_source'] ?? $c;
+                                $norm = RecordNormalizer::normalizeContact($source);
+                                // Count work emails (1 credit each)
+                                if (!empty($norm['emails'])) {
+                                    foreach ($norm['emails'] as $e) {
+                                        if (isset($e['type']) && $e['type'] === 'work' && !empty($e['email'])) {
+                                            $emailCount++;
+                                        }
+                                    }
+                                }
+                                // Count phones (4 credits each)
                                 if (!empty($norm['phones'])) {
                                     $phoneCount++;
                                 }
@@ -169,8 +192,8 @@ class ExportController extends Controller
         $emailSelected = (bool) (($validated['fields']['email'] ?? true));
         $phoneSelected = (bool) (($validated['fields']['phone'] ?? true));
         
-        // Only contact phone numbers cost credits (4 each) - everything else is free
-        $creditsRequired = (($phoneSelected ? $phoneCount : 0) * 4);
+        // Calculate credits: 1 per work email, 4 per phone
+        $creditsRequired = (($emailSelected ? $emailCount : 0) * 1) + (($phoneSelected ? $phoneCount : 0) * 4);
         
         if (!empty($validated['sanitize'])) {
             $creditsRequired = 0;

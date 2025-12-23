@@ -88,6 +88,13 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
     if (revealedFields.has("email")) return
     const id = contact._id
 
+    // Check if user has enough credits (1 credit for email reveal)
+    const balance = billingUsage?.balance as number | undefined
+    if (balance !== undefined && balance < 1) {
+      dispatch(setCreditUsageOpen(true))
+      return
+    }
+
     const requestId = crypto && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`
     try {
       const res = await revealContact({ id, requestId, revealEmail: true }).unwrap()
@@ -100,7 +107,15 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
         showAlert("Reveal unavailable", "No email available to reveal", "warning", 4000)
       }
     } catch (e: unknown) {
-      // Email reveal is free - no credit handling needed
+      const status = typeof e === "object" && e !== null && "status" in e ? (e as { status?: number }).status : undefined
+      const dataError =
+        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
+          ? (e as { data?: { error?: string } }).data?.error || null
+          : null
+      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
+        dispatch(setCreditUsageOpen(true))
+        return
+      }
       showAlert("Reveal failed", "Unable to reveal email", "error", 5000)
     }
   }
@@ -234,7 +249,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs ">
-              Reveal all contact information (1 credit/email, 4 credits/phone)
+              Reveal all contact information (1 credit per work email, 4 credits per phone)
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -334,7 +349,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
                       className="flex items-center gap-1 text-blue-500 transition-colors hover:text-blue-600"
                       aria-label="Reveal email"
                     >
-                      
+                      <span className="text-[10px] text-gray-400">1 credits</span>
                       <Eye className="size-4" />
                     </button>
                   </div>

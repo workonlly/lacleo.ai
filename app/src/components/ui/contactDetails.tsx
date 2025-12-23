@@ -271,13 +271,12 @@ const ContactDetails = () => {
   const handleContactReveal = async (fieldType: "email" | "phone", index?: number) => {
     if (!resolvedContact?._id) return
     
-    // Only check credits for phone reveals (4 credits), email is free
-    if (fieldType === "phone") {
-      const balance = billingUsage?.balance as number | undefined
-      if (balance !== undefined && balance < 4) {
-        dispatch(setCreditUsageOpen(true))
-        return
-      }
+    // Check credits: 1 credit for email, 4 credits for phone
+    const requiredCredits = fieldType === "email" ? 1 : 4
+    const balance = billingUsage?.balance as number | undefined
+    if (balance !== undefined && balance < requiredCredits) {
+      dispatch(setCreditUsageOpen(true))
+      return
     }
     
     const fieldKey = fieldType === "email" ? `contact_email_${index ?? "main"}` : `contact_phone_${index ?? "main"}`
@@ -559,6 +558,7 @@ const ContactDetails = () => {
                                       )
                                     }
                                   >
+                                    <span className="text-[10px] text-gray-400">1 credits</span>
                                     <Eye className="size-3.5" />
                                   </Button>
                                 </div>

@@ -185,6 +185,13 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
     const id = contact?._id
     if (!id) return
 
+    // Check if user has enough credits (1 credit for email reveal)
+    const balance = billingUsage?.balance as number | undefined
+    if (balance !== undefined && balance < 1) {
+      handleInsufficientCredits()
+      return
+    }
+
     const requestId = crypto && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`
     try {
       const res = await revealContact({ id, requestId, revealEmail: true }).unwrap()
@@ -197,7 +204,15 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
         showAlert("Reveal unavailable", "No email available to reveal", "warning", 4000)
       }
     } catch (e: unknown) {
-      // Email reveal is free - no credit handling needed
+      const status = (e as { status?: number })?.status
+      const dataError =
+        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
+          ? (e as { data?: { error?: string } }).data?.error || null
+          : null
+      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
+        handleInsufficientCredits()
+        return
+      }
       showAlert("Reveal failed", "Unable to reveal email", "error", 5000)
     }
   }
@@ -489,6 +504,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
                         {revealedFields.has("email") ? email.address : maskEmail(email.address || "")}
                       </span>
                       <button onClick={toggleRevealEmail} className="text-blue-500 transition-colors hover:text-blue-600" aria-label="Reveal email">
+                        <span className="text-[10px] text-gray-400">1 credits</span>
                         <Eye className="mr-1 size-4" />
                         
                       </button>

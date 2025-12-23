@@ -93,6 +93,8 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
   const totalRows = canShowCounts ? (estimate as { total_rows: number }).total_rows : exportCount
   const emailsToExport = canShowCounts ? (estimate as { email_count: number }).email_count : 0
   const phonesToExport = canShowCounts ? (estimate as { phone_count: number }).phone_count : 0
+  // Debug logging
+  console.log('estimate:', estimate, 'canShowCounts:', canShowCounts, 'emailsToExport:', emailsToExport, 'phonesToExport:', phonesToExport)
   const creditsRequired = canShowCounts ? (estimate as { credits_required: number }).credits_required : undefined
   const availableCredits = canShowCounts ? (estimate as { remaining_before: number }).remaining_before : undefined
   const est = estimate as { credits_required: number; remaining_before: number }
@@ -126,7 +128,9 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
         })
         return
       }
-
+     
+    
+     
       // If custom mode, we might not need IDs, but let's send what we have + limit
       if (exportCount <= 0) return
 
@@ -292,7 +296,15 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
             <div className="flex flex-col items-center justify-center rounded-xl border">
               <div className="py-1.5">
                 <span className="text-xl font-medium text-gray-950">
-                  {creditsRequired !== undefined ? (creditsRequired === 0 ? "Free" : `${creditsRequired} Credits`) : "..."}
+                  {creditsRequired !== undefined
+                    ? type === "contacts"
+                      ? (phonesToExport * 4 + emailsToExport * 1) === 0
+                        ? "Free"
+                        : `${phonesToExport * 4 + emailsToExport * 1} Credits`
+                      : creditsRequired === 0
+                      ? "Free"
+                      : `${creditsRequired} Credits`
+                    : "..."}
                 </span>
               </div>
               <div className="border-b"></div>

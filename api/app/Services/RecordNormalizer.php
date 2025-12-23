@@ -15,7 +15,7 @@ class RecordNormalizer
         if (is_array($rawEmails)) {
             foreach ($rawEmails as $e) {
                 if (is_array($e) && !empty($e['email'])) {
-                    $emails[] = ['email' => trim($e['email'])];
+                    $emails[] = ['email' => trim($e['email']), 'type' => $e['type'] ?? null];
                 } elseif (is_string($e) && trim($e) !== '') {
                     $emails[] = ['email' => trim($e)];
                 }

@@ -157,7 +157,8 @@ class RevealController extends Controller
         $cost = 0;
         $toChargeEmail = $revealEmail && $emailAvailable;
         $toChargePhone = $revealPhone && $phoneAvailable;
-        // Email is free - only charge for phone
+        // Email costs 1 credit, phone costs 4 credits
+        if ($toChargeEmail) $cost += 1;
         if ($toChargePhone) $cost += 4;
 
         $requestId = $request->header('request_id') ?: null;
@@ -167,7 +168,12 @@ class RevealController extends Controller
         $chargedTotal = 0;
         $remaining = $billing->getBalanceForUser($user->id);
 
-        // Email reveal is free - only charge for phone
+        // Charge 1 credit for email, 4 credits for phone
+        if ($toChargeEmail && ! $isAdmin) {
+            $r = $billing->chargeRevealForContact($user->id, $id, 1, ['category' => 'reveal_email', 'request_id' => $requestId, 'contact_id' => $id]);
+            $chargedTotal += ($r['charged'] ?? 0);
+            $remaining = $r['remaining'] ?? $remaining;
+        }
         if ($toChargePhone && ! $isAdmin) {
             $r = $billing->chargeRevealForContact($user->id, $id, 4, ['category' => 'reveal_phone', 'request_id' => $requestId, 'contact_id' => $id]);
             $chargedTotal += ($r['charged'] ?? 0);
@@ -182,8 +188,8 @@ class RevealController extends Controller
             'contact_id' => $id,
         ]);
 
-        // Email is free - always return if requested and available
-        $emailValue = $revealEmail && $emailAvailable ? $primaryEmail : null;
+        // Return revealed values only if charged
+        $emailValue = $toChargeEmail && $emailAvailable ? $primaryEmail : null;
         $phoneValue = $toChargePhone && $phoneAvailable ? $primaryPhone : null;
 
         return response()->json([
@@ -302,7 +308,7 @@ class RevealController extends Controller
             ->where('meta->company_id', $id)
             ->exists();
 
-        // Company reveals are free - no charges
+        // Company reveals are free - no charges (company data doesn't consume credits)
         $cost = 0;
         $phoneValue = ($revealPhone && $phoneAvailable) ? $phone : null;
         $emailValue = (($payload['revealEmail'] ?? false) && $emailAvailable) ? $email : null;

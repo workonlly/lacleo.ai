@@ -13,9 +13,9 @@ use Illuminate\Support\Str;
 
 class EnsureCreditsForExport
 {
-    private const EMAIL_COST = 0; // Changed to 0 - emails are free
+    private const EMAIL_COST = 1; // Work emails cost 1 credit
 
-    private const PHONE_COST = 4; // Only phone numbers cost credits
+    private const PHONE_COST = 4; // Phone numbers cost 4 credits
 
     private const MAX_CONTACTS = 50000;
 
@@ -176,12 +176,13 @@ class EnsureCreditsForExport
             $phoneCount = 0;
             foreach ($data as $c) {
                 $normalized = \App\Services\RecordNormalizer::normalizeContact($c);
-                // Only count phone numbers for contact type - emails are free
+                if (!empty($normalized['emails'])) {
+                    $emailCount += count($normalized['emails']);
+                }
                 if (!empty($normalized['phones'])) {
                     $phoneCount++;
                 }
             }
-
             return [$contactsIncluded, $emailCount, $phoneCount];
         }
         
@@ -236,7 +237,9 @@ class EnsureCreditsForExport
             while (true) {
                 foreach (($result['data'] ?? []) as $c) {
                     $norm = \App\Services\RecordNormalizer::normalizeContact($c);
-                    // Only count phone numbers for contact type - emails are free
+                    if (!empty($norm['emails'])) {
+                        $emailCount += count($norm['emails']);
+                    }
                     if (!empty($norm['phones'])) {
                         $phoneCount++;
                     }
@@ -247,7 +250,6 @@ class EnsureCreditsForExport
                 $page++;
                 $result = $base->paginate($page, $per);
             }
-
             return [$contactsIncluded, $emailCount, $phoneCount, $contactsIncluded];
         }
 
