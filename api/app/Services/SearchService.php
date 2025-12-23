@@ -244,7 +244,17 @@ class SearchService
 
             // 3. If we have company filters, resolve them to domains
             if (!empty($companyFilters)) {
+                Log::info('Resolving company filters to domains', [
+                    'company_filters' => array_keys($companyFilters),
+                    'company_filters_detail' => $companyFilters
+                ]);
+                
                 $resolvedDomains = $this->resolveCompanyFiltersToDomains($companyFilters);
+
+                Log::info('Company filters resolved', [
+                    'resolved_domains_count' => count($resolvedDomains),
+                    'sample_domains' => array_slice($resolvedDomains, 0, 5)
+                ]);
 
                 // If no companies matched the filters, then no contacts should match either.
                 if (empty($resolvedDomains)) {
@@ -1030,35 +1040,57 @@ class SearchService
         // Contact-specific: Department include/exclude (synonym-aware, no fuzzy)
         if ($type === 'contact' && (!empty($filters['departments']) || !empty($filters['department']))) {
             $deptFilter = $filters['departments'] ?? $filters['department'];
+            
+            Log::info('Departments filter received', [
+                'type' => $type,
+                'deptFilter' => $deptFilter
+            ]);
+            
             if (is_array($deptFilter)) {
                 $include = array_values(array_filter(array_map('trim', (array) ($deptFilter['include'] ?? [])), 'strlen'));
                 $exclude = array_values(array_filter(array_map('trim', (array) ($deptFilter['exclude'] ?? [])), 'strlen'));
+
+                Log::info('Departments filter parsed', [
+                    'include' => $include,
+                    'exclude' => $exclude
+                ]);
 
                 $deptFields = ['department_normalized', 'departments', 'department', 'team', 'function'];
 
                 if ($include) {
                     $shouldClauses = [];
                     foreach ($include as $term) {
-                        foreach ($this->expandDepartmentSynonyms($term) as $t) {
+                        $synonyms = $this->expandDepartmentSynonyms($term);
+                        Log::info('Department synonyms expanded', [
+                            'original' => $term,
+                            'synonyms' => $synonyms
+                        ]);
+                        
+                        foreach ($synonyms as $t) {
                             $shouldClauses[] = [
                                 'bool' => [
                                     'should' => [
-                                        // 1. Exact Phrase/Keyword Match
+                                        // 1. Match query (case-insensitive)
                                         [
                                             'multi_match' => [
                                                 'query' => $t,
-                                                'type' => 'phrase',
+                                                'type' => 'best_fields',
                                                 'fields' => array_map(fn($f) => "{$f}^2", $deptFields),
+                                                'operator' => 'and',
                                                 'boost' => 5
                                             ]
                                         ],
-                                        // 2. Tokenized AND Match (Secondary)
+                                        // 2. Wildcard for partial matching
                                         [
-                                            'multi_match' => [
-                                                'query' => $t,
-                                                'type' => 'cross_fields',
-                                                'fields' => $deptFields,
-                                                'operator' => 'and'
+                                            'bool' => [
+                                                'should' => array_map(fn($f) => [
+                                                    'wildcard' => [
+                                                        $f => [
+                                                            'value' => '*' . strtolower($t) . '*',
+                                                            'case_insensitive' => true
+                                                        ]
+                                                    ]
+                                                ], $deptFields)
                                             ]
                                         ]
                                     ]
@@ -1067,6 +1099,9 @@ class SearchService
                         }
                     }
                     if ($shouldClauses) {
+                        Log::info('Departments filter clauses built', [
+                            'clauses_count' => count($shouldClauses)
+                        ]);
                         $filterClauses[] = ['bool' => ['should' => $shouldClauses, 'minimum_should_match' => 1]];
                     }
                 }
