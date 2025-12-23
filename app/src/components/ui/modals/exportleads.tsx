@@ -291,7 +291,9 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
 
             <div className="flex flex-col items-center justify-center rounded-xl border">
               <div className="py-1.5">
-                <span className="text-xl font-medium text-gray-950">{creditsRequired !== undefined ? creditsRequired : "..."} Credits</span>
+                <span className="text-xl font-medium text-gray-950">
+                  {creditsRequired !== undefined ? (creditsRequired === 0 ? "Free" : `${creditsRequired} Credits`) : "..."}
+                </span>
               </div>
               <div className="border-b"></div>
               <div className="flex w-full justify-center rounded-b-xl bg-[#F7F7F7] py-2.5">
