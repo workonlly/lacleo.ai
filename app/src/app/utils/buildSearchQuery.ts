@@ -20,7 +20,7 @@ interface ExperienceFilter {
 
 const mapIdToDslKey: Record<string, string> = {
   // Actual API filter IDs (from /filters endpoint)
-  industry: "industry",
+  industry: "industries",
   company_location: "company_location",
   company_headcount: "company_headcount",
   
@@ -29,8 +29,8 @@ const mapIdToDslKey: Record<string, string> = {
   company_location_company: "locations",
   company_headquarters: "locations",
   technologies: "technologies",
-  employee_count: "employee_count",
-  company_employee_count: "employee_count",
+  employee_count: "company_headcount",  // Map to company_headcount for bracket handling
+  company_employee_count: "company_headcount",  // Map to company_headcount for bracket handling
   company_revenue: "revenue",
   company_revenue_range: "revenue",
   job_title: "job_title",
@@ -41,7 +41,7 @@ const mapIdToDslKey: Record<string, string> = {
   company_domain_contact: "domains",
   company_name_company: "company_names",
   company_name_contact: "company_names",
-  company_industries: "industry",
+  company_industries: "industries",
   company_headcount_contact: "company_headcount",
   company_founded_year: "founded_year",
   company_domain: "domains",
@@ -75,13 +75,7 @@ const companyBucketKeys = new Set([
 
 // Special handling for numeric range filters
 const rangeFilterKeys = new Set([
-  // Actual API filter IDs that are ranges
-  "company_headcount",
-  
-  // Legacy/alternate IDs
-  "employee_count",
-  "company_employee_count",
-  "company_headcount_contact",
+  // Only true continuous range filters (NOT bracket selections)
   "revenue",
   "company_revenue_range",
   "years_of_experience",
@@ -92,14 +86,15 @@ const rangeFilterKeys = new Set([
 // Boolean filters
 const booleanFilterKeys = new Set(["company_has_email", "company_has_phone", "contact_has_email", "contact_has_phone"])
 
-function buildIncludeExclude(items: SelectedFilter[]): IncludeExclude | null {
+function buildIncludeExclude(items: SelectedFilter[], sectionId?: string): IncludeExclude | null {
+  const shouldLowercase = sectionId === "industry" || sectionId === "company_industries"
   const include = items
     .filter((i) => i.type === "include")
-    .map((i) => i.name)
+    .map((i) => shouldLowercase ? i.name.toLowerCase() : i.name)
     .filter((v) => v && v.trim())
   const exclude = items
     .filter((i) => i.type === "exclude")
-    .map((i) => i.name)
+    .map((i) => shouldLowercase ? i.name.toLowerCase() : i.name)
     .filter((v) => v && v.trim())
 
   if (include.length === 0 && exclude.length === 0) return null
@@ -308,14 +303,14 @@ export function buildSearchQuery(
 
     // 3. Location filters (special handling)
     if (sectionId === "company_location" || sectionId === "company_headquarters") {
-      const filterObj = buildIncludeExclude(items)
+      const filterObj = buildIncludeExclude(items, sectionId)
       if (!filterObj) return
-      dsl.company["locations"] = filterObj
+      dsl.company["company_location"] = filterObj
       return
     }
 
     if (sectionId === "contact_location" || sectionId === "contact_country" || sectionId === "contact_state" || sectionId === "contact_city") {
-      const filterObj = buildIncludeExclude(items)
+      const filterObj = buildIncludeExclude(items, sectionId)
       if (!filterObj) return
 
       // For contact location fields, use locations object with field specification
@@ -332,15 +327,18 @@ export function buildSearchQuery(
     }
 
     // 4. Standard include/exclude filters
-    const filterObj = buildIncludeExclude(items)
+    const filterObj = buildIncludeExclude(items, sectionId)
     if (!filterObj) return
 
     // Determine bucket based on mapped parameter key
     if (companyBucketKeys.has(paramKey)) {
       // Company filters - include operator for domains/company_names if available
+      const bucket = activeFilters?.company?.[paramKey]
       if (paramKey === "domains" || paramKey === "company_names") {
-        const bucket = activeFilters?.company?.[paramKey]
         dsl.company[paramKey] = bucket?.operator ? { ...filterObj, operator: bucket.operator } : filterObj
+      } else if (paramKey === "industries") {
+        // Add presence field for industries filter
+        dsl.company[paramKey] = bucket?.presence ? { ...filterObj, presence: bucket.presence } : filterObj
       } else {
         dsl.company[paramKey] = filterObj
       }
