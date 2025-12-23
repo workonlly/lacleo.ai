@@ -157,7 +157,7 @@ class RevealController extends Controller
         $cost = 0;
         $toChargeEmail = $revealEmail && $emailAvailable;
         $toChargePhone = $revealPhone && $phoneAvailable;
-        if ($toChargeEmail) $cost += 1;
+        // Email is free - only charge for phone
         if ($toChargePhone) $cost += 4;
 
         $requestId = $request->header('request_id') ?: null;
@@ -167,11 +167,7 @@ class RevealController extends Controller
         $chargedTotal = 0;
         $remaining = $billing->getBalanceForUser($user->id);
 
-        if ($toChargeEmail && ! $isAdmin) {
-            $r = $billing->chargeRevealForContact($user->id, $id, 1, ['category' => 'reveal_email', 'request_id' => $requestId, 'contact_id' => $id]);
-            $chargedTotal += ($r['charged'] ?? 0);
-            $remaining = $r['remaining'] ?? $remaining;
-        }
+        // Email reveal is free - only charge for phone
         if ($toChargePhone && ! $isAdmin) {
             $r = $billing->chargeRevealForContact($user->id, $id, 4, ['category' => 'reveal_phone', 'request_id' => $requestId, 'contact_id' => $id]);
             $chargedTotal += ($r['charged'] ?? 0);
@@ -186,7 +182,8 @@ class RevealController extends Controller
             'contact_id' => $id,
         ]);
 
-        $emailValue = $toChargeEmail && $emailAvailable ? $primaryEmail : null;
+        // Email is free - always return if requested and available
+        $emailValue = $revealEmail && $emailAvailable ? $primaryEmail : null;
         $phoneValue = $toChargePhone && $phoneAvailable ? $primaryPhone : null;
 
         return response()->json([
@@ -305,66 +302,24 @@ class RevealController extends Controller
             ->where('meta->company_id', $id)
             ->exists();
 
+        // Company reveals are free - no charges
         $cost = 0;
         $phoneValue = ($revealPhone && $phoneAvailable) ? $phone : null;
         $emailValue = (($payload['revealEmail'] ?? false) && $emailAvailable) ? $email : null;
-        if ($revealPhone && $phoneAvailable && ! $alreadyPhone) { $cost += 4; }
-        $alreadyEmail = \App\Models\CreditTransaction::where('workspace_id', $workspace->id)
-            ->where('type', 'spend')
-            ->where('meta->category', 'reveal_company_email')
-            ->where('meta->company_id', $id)
-            ->exists();
-        if (($payload['revealEmail'] ?? false) && $emailAvailable && ! $alreadyEmail) { $cost += 1; }
 
         $requestId = $request->header('request_id');
 
-        if ($cost > 0) {
-            DB::transaction(function () use ($workspace, $cost, $alreadyPhone, $alreadyEmail, $id, $requestId) {
-                $ws = Workspace::where('id', $workspace->id)->lockForUpdate()->first();
-                if (($ws->credit_balance ?? 0) < $cost) {
-                    throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
-                        'error' => 'INSUFFICIENT_CREDITS',
-                        'required' => (int) $cost,
-                        'available' => (int) ($ws->credit_balance ?? 0),
-                    ], 402));
-                }
-                $ws->update(['credit_balance' => $ws->credit_balance - $cost]);
-                if (! $alreadyPhone) {
-                    CreditTransaction::create([
-                        'workspace_id' => $ws->id,
-                        'amount' => -4,
-                        'type' => 'spend',
-                        'meta' => [
-                            'category' => 'reveal_company_phone',
-                            'request_id' => $requestId,
-                            'company_id' => $id,
-                        ],
-                    ]);
-                }
-                if (! $alreadyEmail) {
-                    CreditTransaction::create([
-                        'workspace_id' => $ws->id,
-                        'amount' => -1,
-                        'type' => 'spend',
-                        'meta' => [
-                            'category' => 'reveal_company_email',
-                            'request_id' => $requestId,
-                            'company_id' => $id,
-                        ],
-                    ]);
-                }
-            });
-            Log::info('Reveal event', [
-                'user_id' => $user->id,
-                'workspace_id' => $workspace->id,
-                'request_id' => $requestId,
-                'field' => 'company_reveal',
-                'amount' => $cost,
-                'company_id' => $id,
-            ]);
-        }
-
+        // Company reveals are free - no transaction needed
         $remaining = (int) (Workspace::find($workspace->id)->credit_balance ?? 0);
+
+        Log::info('Reveal event', [
+            'user_id' => $user->id,
+            'workspace_id' => $workspace->id,
+            'request_id' => $requestId,
+            'field' => 'company_reveal',
+            'amount' => 0,
+            'company_id' => $id,
+        ]);
 
         return response()->json([
             'company' => [
@@ -374,7 +329,7 @@ class RevealController extends Controller
             'company_phone' => $phoneValue,
             'company_email' => $emailValue,
             'revealed' => ($phoneValue !== null) || ($emailValue !== null),
-            'credits_charged' => (int) $cost,
+            'credits_charged' => 0,
             'remaining_credits' => (int) $remaining,
         ]);
     }

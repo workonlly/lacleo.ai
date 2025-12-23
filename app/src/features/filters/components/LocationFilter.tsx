@@ -154,20 +154,45 @@ export const LocationFilter: React.FC<LocationFilterProps> = ({ scope }) => {
             Exclude
           </Button>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2 top-2.5 size-4 text-gray-400" />
-          <Input
-            placeholder={`Search ${label.toLowerCase()}...`}
-            value={query}
-            onChange={(e) => {
-              const val = e.target.value
-              setQuery(val)
-              if (val.length > 1 && !disabled) handleSearch(filter, val)
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-2.5 size-4 text-gray-400" />
+            <Input
+              placeholder={`Search ${label.toLowerCase()}...`}
+              value={query}
+              onChange={(e) => {
+                const val = e.target.value
+                setQuery(val)
+                if (val.length > 1 && !disabled) handleSearch(filter, val)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && query.trim() && !disabled) {
+                  e.preventDefault()
+                  onSelect(filter.id, { id: query.trim(), name: query.trim() })
+                  setQuery("")
+                }
+              }}
+              className="h-9 pl-8 text-sm"
+              disabled={disabled}
+            />
+            {!!loading && <Loader2 className="absolute right-2 top-2.5 size-4 animate-spin text-gray-400" />}
+          </div>
+          <button
+            onClick={() => {
+              if (query.trim() && !disabled) {
+                onSelect(filter.id, { id: query.trim(), name: query.trim() })
+                setQuery("")
+              }
             }}
-            className="h-9 pl-8 text-sm"
             disabled={disabled}
-          />
-          {!!loading && <Loader2 className="absolute right-2 top-2.5 size-4 animate-spin text-gray-400" />}
+            className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${
+              actionType === "include"
+                ? "border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50"
+                : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+            }`}
+          >
+            <Plus className="size-4" />
+          </button>
         </div>
         {!!query && !!res && res.length > 0 && (
           <div className="max-h-40 overflow-y-auto rounded-md border bg-white p-2 shadow-sm dark:bg-gray-900">

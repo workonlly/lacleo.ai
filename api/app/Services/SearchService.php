@@ -167,7 +167,7 @@ class SearchService
                 continue;
             }
             $direction = strtolower((string) ($s['direction'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
-            $numericFields = ['employees', 'employee_count', 'annualRevenue', 'annual_revenue_usd', 'foundedYear', 'founded_year', 'latest_funding_amount', 'total_funding_usd'];
+            $numericFields = ['employee_count', 'annualRevenue', 'annual_revenue_usd', 'annual_revenue', 'foundedYear', 'founded_year', 'latest_funding_amount', 'total_funding_usd'];
             if (in_array($field, $numericFields, true)) {
                 $builder->sort($field, $direction);
             } else {
@@ -244,7 +244,17 @@ class SearchService
 
             // 3. If we have company filters, resolve them to domains
             if (!empty($companyFilters)) {
+                Log::info('Resolving company filters to domains', [
+                    'company_filters' => array_keys($companyFilters),
+                    'company_filters_detail' => $companyFilters
+                ]);
+                
                 $resolvedDomains = $this->resolveCompanyFiltersToDomains($companyFilters);
+
+                Log::info('Company filters resolved', [
+                    'resolved_domains_count' => count($resolvedDomains),
+                    'sample_domains' => array_slice($resolvedDomains, 0, 5)
+                ]);
 
                 // If no companies matched the filters, then no contacts should match either.
                 if (empty($resolvedDomains)) {
@@ -272,6 +282,14 @@ class SearchService
         if ($type === 'company' && isset($filters['company']) && is_array($filters['company'])) {
             $filters = array_merge($filters, $filters['company']);
         }
+        
+        // Log all filters for debugging
+        Log::info('All filters after unwrapping', [
+            'type' => $type,
+            'filters' => array_keys($filters),
+            'has_company_location' => isset($filters['company_location']),
+            'company_location_value' => $filters['company_location'] ?? null
+        ]);
 
         // Normalize legacy/frontend filter IDs to canonical keys
         // Map company name filters → company_names
@@ -296,30 +314,38 @@ class SearchService
             $exclude = array_values(array_filter(array_map('trim', (array) ($inds['exclude'] ?? [])), 'strlen'));
             $presence = $inds['presence'] ?? 'any';
 
+            // Debug logging
+            Log::info('Industries filter received', [
+                'type' => $type,
+                'include' => $include,
+                'exclude' => $exclude,
+                'presence' => $presence
+            ]);
+
             // Presence Logic (Known / Unknown)
             if ($presence === 'known') {
                 if ($type === 'company') {
                     $shouldStart = [];
                     $shouldStart[] = ['exists' => ['field' => 'industry']];
                     $shouldStart[] = ['exists' => ['field' => 'industries']];
-                    $shouldStart[] = ['exists' => ['field' => 'businessCategory']];
+                    $shouldStart[] = ['exists' => ['field' => 'business_category']];
                     $filterClauses[] = ['bool' => ['should' => $shouldStart, 'minimum_should_match' => 1]];
                 } else {
                     $shouldStart = [];
                     $shouldStart[] = ['exists' => ['field' => 'company_obj.industry']];
                     $shouldStart[] = ['exists' => ['field' => 'company_obj.industries']];
-                    $shouldStart[] = ['exists' => ['field' => 'company_obj.businessCategory']];
+                    $shouldStart[] = ['exists' => ['field' => 'company_obj.business_category']];
                     $filterClauses[] = ['bool' => ['should' => $shouldStart, 'minimum_should_match' => 1]];
                 }
             } elseif ($presence === 'unknown') {
                 if ($type === 'company') {
                     $mustNot[] = ['exists' => ['field' => 'industry']];
                     $mustNot[] = ['exists' => ['field' => 'industries']];
-                    $mustNot[] = ['exists' => ['field' => 'businessCategory']];
+                    $mustNot[] = ['exists' => ['field' => 'business_category']];
                 } else {
                     $mustNot[] = ['exists' => ['field' => 'company_obj.industry']];
                     $mustNot[] = ['exists' => ['field' => 'company_obj.industries']];
-                    $mustNot[] = ['exists' => ['field' => 'company_obj.businessCategory']];
+                    $mustNot[] = ['exists' => ['field' => 'company_obj.business_category']];
                 }
             }
 
@@ -327,33 +353,59 @@ class SearchService
             if ($include) {
                 if ($type === 'company') {
                     $should = [];
-                    $should[] = ['terms' => ['industry' => $include]];
-                    $should[] = ['terms' => ['industries' => $include]];
-                    $should[] = ['terms' => ['businessCategory' => $include]];
-                    $filterClauses[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
+                    foreach ($include as $term) {
+                        $termLower = strtolower(trim($term));
+                        // Try multiple matching strategies for better compatibility
+                        $should[] = ['match' => ['industry' => ['query' => $termLower, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        $should[] = ['match' => ['industries' => ['query' => $termLower, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        $should[] = ['match' => ['business_category' => ['query' => $termLower, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        // Also try wildcard for partial matching
+                        $should[] = ['wildcard' => ['industry' => ['value' => "*{$termLower}*", 'case_insensitive' => true]]];
+                        $should[] = ['wildcard' => ['industries' => ['value' => "*{$termLower}*", 'case_insensitive' => true]]];
+                        $should[] = ['wildcard' => ['business_category' => ['value' => "*{$termLower}*", 'case_insensitive' => true]]];
+                    }
+                    if (!empty($should)) {
+                        $clause = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
+                        $filterClauses[] = $clause;
+                        Log::info('Industry filter clause added', ['clause' => $clause]);
+                    }
                 } else {
                     $should = [];
-                    $should[] = ['terms' => ['company_obj.industry' => $include]];
-                    $should[] = ['terms' => ['company_obj.industries' => $include]];
-                    $should[] = ['terms' => ['company_obj.businessCategory' => $include]];
-                    $filterClauses[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
+                    foreach ($include as $term) {
+                        $termLower = strtolower(trim($term));
+                        $should[] = ['match' => ['company_obj.industry' => ['query' => $termLower, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        $should[] = ['match' => ['company_obj.industries' => ['query' => $termLower, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        $should[] = ['match' => ['company_obj.business_category' => ['query' => $termLower, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        $should[] = ['wildcard' => ['company_obj.industry' => ['value' => "*{$termLower}*", 'case_insensitive' => true]]];
+                        $should[] = ['wildcard' => ['company_obj.industries' => ['value' => "*{$termLower}*", 'case_insensitive' => true]]];
+                        $should[] = ['wildcard' => ['company_obj.business_category' => ['value' => "*{$termLower}*", 'case_insensitive' => true]]];
+                    }
+                    if (!empty($should)) {
+                        $filterClauses[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
+                    }
                 }
             }
 
             // Exclude Logic
             if ($exclude) {
                 if ($type === 'company') {
-                    $shouldExclude = [];
-                    $shouldExclude[] = ['terms' => ['industry' => $exclude]];
-                    $shouldExclude[] = ['terms' => ['industries' => $exclude]];
-                    $shouldExclude[] = ['terms' => ['businessCategory' => $exclude]];
-                    $mustNot[] = ['bool' => ['should' => $shouldExclude, 'minimum_should_match' => 1]];
+                    foreach ($exclude as $term) {
+                        $termLower = strtolower(trim($term));
+                        $shouldExclude = [];
+                        $shouldExclude[] = ['match' => ['industry' => ['query' => $termLower, 'operator' => 'and']]];
+                        $shouldExclude[] = ['match' => ['industries' => ['query' => $termLower, 'operator' => 'and']]];
+                        $shouldExclude[] = ['match' => ['business_category' => ['query' => $termLower, 'operator' => 'and']]];
+                        $mustNot[] = ['bool' => ['should' => $shouldExclude, 'minimum_should_match' => 1]];
+                    }
                 } else {
-                    $shouldExclude = [];
-                    $shouldExclude[] = ['terms' => ['company_obj.industry' => $exclude]];
-                    $shouldExclude[] = ['terms' => ['company_obj.industries' => $exclude]];
-                    $shouldExclude[] = ['terms' => ['company_obj.businessCategory' => $exclude]];
-                    $mustNot[] = ['bool' => ['should' => $shouldExclude, 'minimum_should_match' => 1]];
+                    foreach ($exclude as $term) {
+                        $termLower = strtolower(trim($term));
+                        $shouldExclude = [];
+                        $shouldExclude[] = ['match' => ['company_obj.industry' => ['query' => $termLower, 'operator' => 'and']]];
+                        $shouldExclude[] = ['match' => ['company_obj.industries' => ['query' => $termLower, 'operator' => 'and']]];
+                        $shouldExclude[] = ['match' => ['company_obj.business_category' => ['query' => $termLower, 'operator' => 'and']]];
+                        $mustNot[] = ['bool' => ['should' => $shouldExclude, 'minimum_should_match' => 1]];
+                    }
                 }
             }
         }
@@ -449,15 +501,35 @@ class SearchService
 
         // --- Locations block ---
         // Support flexible contact/company location filters: include, exclude, known/unknown
-        if (!empty($filters['locations']) || !empty($filters['country']) || !empty($filters['state']) || !empty($filters['city'])) {
-            // Normalize buckets: allow either `locations: { include, exclude }` or top-level country/state/city keys
-            $locBucket = is_array($filters['locations']) ? $filters['locations'] : [];
-            $countryBucket = is_array($filters['country']) ? $filters['country'] : [];
-            $stateBucket = is_array($filters['state']) ? $filters['state'] : [];
-            $cityBucket = is_array($filters['city']) ? $filters['city'] : [];
+        if (!empty($filters['locations']) || !empty($filters['company_location']) || !empty($filters['country']) || !empty($filters['state']) || !empty($filters['city'])) {
+            // Log incoming location filters for debugging
+            Log::info('Location filter received', [
+                'type' => $type,
+                'has_locations' => !empty($filters['locations']),
+                'has_company_location' => !empty($filters['company_location']),
+                'company_location_value' => $filters['company_location'] ?? null,
+                'locations_value' => $filters['locations'] ?? null
+            ]);
 
-            $incCountries = array_values(array_filter(array_map('trim', (array) ($locBucket['countries'] ?? $countryBucket['include'] ?? [])), 'strlen'));
-            $excCountries = array_values(array_filter(array_map('trim', (array) ($locBucket['countries_exclude'] ?? $countryBucket['exclude'] ?? [])), 'strlen'));
+            // Normalize buckets: allow either `locations: { include, exclude }` or top-level country/state/city keys
+            $locBucket = is_array($filters['locations'] ?? null) ? $filters['locations'] : (is_array($filters['company_location'] ?? null) ? $filters['company_location'] : []);
+            $countryBucket = is_array($filters['country'] ?? null) ? $filters['country'] : [];
+            $stateBucket = is_array($filters['state'] ?? null) ? $filters['state'] : [];
+            $cityBucket = is_array($filters['city'] ?? null) ? $filters['city'] : [];
+
+            // Support both new format (countries/states/cities) and simple format (include/exclude)
+            $simpleInclude = array_values(array_filter(array_map('trim', (array) ($locBucket['include'] ?? [])), 'strlen'));
+            $simpleExclude = array_values(array_filter(array_map('trim', (array) ($locBucket['exclude'] ?? [])), 'strlen'));
+            
+            $incCountries = array_values(array_filter(array_map('trim', (array) ($locBucket['countries'] ?? $countryBucket['include'] ?? $simpleInclude)), 'strlen'));
+            $excCountries = array_values(array_filter(array_map('trim', (array) ($locBucket['countries_exclude'] ?? $countryBucket['exclude'] ?? $simpleExclude)), 'strlen'));
+
+            Log::info('Location filter parsed', [
+                'type' => $type,
+                'simpleInclude' => $simpleInclude,
+                'incCountries' => $incCountries,
+                'excCountries' => $excCountries
+            ]);
 
             $incStates = array_values(array_filter(array_map('trim', (array) ($locBucket['states'] ?? $stateBucket['include'] ?? [])), 'strlen'));
             $excStates = array_values(array_filter(array_map('trim', (array) ($locBucket['states_exclude'] ?? $stateBucket['exclude'] ?? [])), 'strlen'));
@@ -495,9 +567,10 @@ class SearchService
                     if ($n === '')
                         continue;
                     foreach ($fields as $f) {
-                        // exact keyword term (if field has keyword mapping) and a phrase match fallback
-                        $should[] = ['term' => [$f => ['value' => $n]]];
-                        $should[] = ['match_phrase' => [$f => ['query' => $n]]];
+                        // Use match query with fuzziness for better matching
+                        $should[] = ['match' => [$f => ['query' => $n, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
+                        // Also add wildcard for partial matches
+                        $should[] = ['wildcard' => [$f => '*' . $n . '*']];
                     }
                 }
                 return $should;
@@ -519,7 +592,15 @@ class SearchService
 
             // Include countries/states/cities
             if ($incCountries) {
+                Log::info('Building location filter clauses', [
+                    'incCountries' => $incCountries,
+                    'countryFields' => $countryFields
+                ]);
                 $clauses = $buildIncludeClauses($incCountries, $countryFields);
+                Log::info('Location clauses built', [
+                    'clauses_count' => count($clauses),
+                    'clauses' => $clauses
+                ]);
                 if ($clauses)
                     $filterClauses[] = ['bool' => ['should' => $clauses, 'minimum_should_match' => 1]];
             }
@@ -573,6 +654,12 @@ class SearchService
         // Employee Count (Range)
         if (!empty($filters['employee_count']) && is_array($filters['employee_count'])) {
             $rng = $filters['employee_count'];
+            
+            Log::info('Employee count filter received', [
+                'type' => $type,
+                'filter_data' => $rng
+            ]);
+            
             $range = [];
             if (isset($rng['min']) && $rng['min'] !== null) {
                 $range['gte'] = (int) $rng['min'];
@@ -582,10 +669,11 @@ class SearchService
             }
             if ($range) {
                 if ($type === 'company') {
-                    $filterClauses[] = ['range' => ['employees' => $range]];
+                    $filterClauses[] = ['range' => ['employee_count' => $range]];
                 } else {
-                    $filterClauses[] = ['range' => ['company_obj.employees' => $range]];
+                    $filterClauses[] = ['range' => ['company_obj.employee_count' => $range]];
                 }
+                Log::info('Employee count range clause added', ['clause' => $range]);
             }
         }
 
@@ -596,7 +684,7 @@ class SearchService
             $include = array_values(array_filter(array_map('trim', (array) ($ch['include'] ?? [])), 'strlen'));
             $exclude = array_values(array_filter(array_map('trim', (array) ($ch['exclude'] ?? [])), 'strlen'));
 
-            $field = ($type === 'company') ? 'employees' : 'company_obj.employees';
+            $field = ($type === 'company') ? 'employee_count' : 'company_obj.employee_count';
 
             // ... (Include logic)
             if ($include) {
@@ -952,35 +1040,57 @@ class SearchService
         // Contact-specific: Department include/exclude (synonym-aware, no fuzzy)
         if ($type === 'contact' && (!empty($filters['departments']) || !empty($filters['department']))) {
             $deptFilter = $filters['departments'] ?? $filters['department'];
+            
+            Log::info('Departments filter received', [
+                'type' => $type,
+                'deptFilter' => $deptFilter
+            ]);
+            
             if (is_array($deptFilter)) {
                 $include = array_values(array_filter(array_map('trim', (array) ($deptFilter['include'] ?? [])), 'strlen'));
                 $exclude = array_values(array_filter(array_map('trim', (array) ($deptFilter['exclude'] ?? [])), 'strlen'));
+
+                Log::info('Departments filter parsed', [
+                    'include' => $include,
+                    'exclude' => $exclude
+                ]);
 
                 $deptFields = ['department_normalized', 'departments', 'department', 'team', 'function'];
 
                 if ($include) {
                     $shouldClauses = [];
                     foreach ($include as $term) {
-                        foreach ($this->expandDepartmentSynonyms($term) as $t) {
+                        $synonyms = $this->expandDepartmentSynonyms($term);
+                        Log::info('Department synonyms expanded', [
+                            'original' => $term,
+                            'synonyms' => $synonyms
+                        ]);
+                        
+                        foreach ($synonyms as $t) {
                             $shouldClauses[] = [
                                 'bool' => [
                                     'should' => [
-                                        // 1. Exact Phrase/Keyword Match
+                                        // 1. Match query (case-insensitive)
                                         [
                                             'multi_match' => [
                                                 'query' => $t,
-                                                'type' => 'phrase',
+                                                'type' => 'best_fields',
                                                 'fields' => array_map(fn($f) => "{$f}^2", $deptFields),
+                                                'operator' => 'and',
                                                 'boost' => 5
                                             ]
                                         ],
-                                        // 2. Tokenized AND Match (Secondary)
+                                        // 2. Wildcard for partial matching
                                         [
-                                            'multi_match' => [
-                                                'query' => $t,
-                                                'type' => 'cross_fields',
-                                                'fields' => $deptFields,
-                                                'operator' => 'and'
+                                            'bool' => [
+                                                'should' => array_map(fn($f) => [
+                                                    'wildcard' => [
+                                                        $f => [
+                                                            'value' => '*' . strtolower($t) . '*',
+                                                            'case_insensitive' => true
+                                                        ]
+                                                    ]
+                                                ], $deptFields)
                                             ]
                                         ]
                                     ]
@@ -989,6 +1099,9 @@ class SearchService
                         }
                     }
                     if ($shouldClauses) {
+                        Log::info('Departments filter clauses built', [
+                            'clauses_count' => count($shouldClauses)
+                        ]);
                         $filterClauses[] = ['bool' => ['should' => $shouldClauses, 'minimum_should_match' => 1]];
                     }
                 }
@@ -2212,19 +2325,19 @@ class SearchService
 
         // Map contact DSL company filters to actual company index filters
         $filterMap = [
-            'company_employee_count' => 'employees',
-            'company_headcount' => 'employees',
-            'employee_count' => 'employees',
-            'company_revenue' => 'annualRevenue',
-            'revenue' => 'annualRevenue',
-            'annual_revenue' => 'annualRevenue',
-            'company_industries' => 'industries',
-            'industry' => 'industries',
-            'industries' => 'industries',
-            'company_technologies' => 'technologies',
-            'technologies' => 'technologies',
-            'company_locations' => 'locations',
-            'company_location' => 'locations',
+            'company_employee_count' => 'employee_count',
+            'company_headcount' => 'employee_count',
+            'employee_count' => 'employee_count',
+            'company_revenue' => 'annual_revenue',
+            'revenue' => 'annual_revenue',
+            'annual_revenue' => 'annual_revenue',
+            'company_industries' => 'business_category',
+            'industry' => 'business_category',
+            'industries' => 'business_category',
+            'company_technologies' => 'company_technologies',
+            'technologies' => 'company_technologies',
+            'company_locations' => 'location',
+            'company_location' => 'location',
             'company_headquarters' => 'locations',
             'company_founded_year' => 'foundedYear',
             'founded_year' => 'foundedYear',
@@ -2413,28 +2526,21 @@ class SearchService
                     break;
 
                 case 'locations':
+                case 'location':
                     if (is_array($value)) {
                         $include = $value['include'] ?? [];
 
                         if (!empty($include)) {
-                            $shouldLoc = [];
-                            foreach ($include as $val) {
-                                // Need to implement normalizeCountryName or remove call if unused here? 
-                                // User code calls $this->normalizeCountryName($val)
-                                // I will ensure the method exists or use a simple trim. 
-                                // For now, I'll use a placeholder logic or assume I'll add the method method.
-                                $country = $this->normalizeCountryName($val);
-                                $shouldLoc[] = [
-                                    'multi_match' => [
-                                        'query' => $country,
-                                        'fields' => ['location.country', 'location.city', 'location.state', 'country', 'city', 'state'],
-                                        'type' => 'phrase',
-                                        'operator' => 'or'
-                                    ]
+                            // Normalize country names
+                            $normalizedCountries = array_map(fn($c) => $this->normalizeCountryName($c), $include);
+                            $normalizedCountries = array_filter($normalizedCountries);
+                            
+                            if (!empty($normalizedCountries)) {
+                                // Use terms query for exact country matching
+                                $shouldLoc = [
+                                    'terms' => ['location.country' => $normalizedCountries]
                                 ];
-                            }
-                            if ($shouldLoc) {
-                                $filterClauses[] = ['bool' => ['should' => $shouldLoc, 'minimum_should_match' => 1]];
+                                $filterClauses[] = $shouldLoc;
                             }
                         }
                     }

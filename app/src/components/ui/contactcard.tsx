@@ -100,13 +100,8 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
         showAlert("Reveal unavailable", "No email available to reveal", "warning", 4000)
       }
     } catch (e: unknown) {
-      const status = typeof e === "object" && e !== null && "status" in e ? (e as { status?: number }).status : undefined
-      const dataError =
-        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
-          ? (e as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") handleInsufficientCredits()
-      else showAlert("Reveal failed", "Unable to reveal email", "error", 5000)
+      // Email reveal is free - no credit handling needed
+      showAlert("Reveal failed", "Unable to reveal email", "error", 5000)
     }
   }
 
@@ -154,15 +149,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
         setRevealedFields(newRevealed)
       }
     } catch (e: unknown) {
-      const status = typeof e === "object" && e !== null && "status" in e ? (e as { status?: number }).status : undefined
-      const dataError =
-        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
-          ? (e as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        dispatch(setCreditUsageOpen(true))
-        return
-      }
+      // Company phone reveal is free - no credit handling needed
       showAlert("Reveal failed", "Unable to reveal company phone", "error", 5000)
     }
   }
@@ -182,15 +169,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
         setRevealedFields(newRevealed)
       }
     } catch (e: unknown) {
-      const status = typeof e === "object" && e !== null && "status" in e ? (e as { status?: number }).status : undefined
-      const dataError =
-        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
-          ? (e as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        dispatch(setCreditUsageOpen(true))
-        return
-      }
+      // Company email reveal is free - no credit handling needed
       showAlert("Reveal failed", "Unable to reveal company email", "error", 5000)
     }
   }
@@ -254,7 +233,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
                 Reveal Info
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">
+            <TooltipContent side="bottom" className="text-xs ">
               Reveal all contact information (1 credit/email, 4 credits/phone)
             </TooltipContent>
           </Tooltip>
@@ -325,7 +304,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
                       className="flex items-center gap-1 text-blue-500 transition-colors hover:text-blue-600"
                       aria-label="Reveal company phone"
                     >
-                      <span className="text-[10px] text-gray-400">4 credits</span>
+                      
                       <Eye className="size-4" />
                     </button>
                   </div>
@@ -355,7 +334,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
                       className="flex items-center gap-1 text-blue-500 transition-colors hover:text-blue-600"
                       aria-label="Reveal email"
                     >
-                      <span className="text-[10px] text-gray-400">1 credit</span>
+                      
                       <Eye className="size-4" />
                     </button>
                   </div>
@@ -375,7 +354,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
                       className="flex items-center gap-1 text-blue-500 transition-colors hover:text-blue-600"
                       aria-label="Reveal email"
                     >
-                      <span className="text-[10px] text-gray-400">1 credit</span>
+                     
                       <Eye className="size-4" />
                     </button>
                   </div>
@@ -406,7 +385,7 @@ const ContactCard: React.FC<ContactCardProps> = ({ contact, location = "", secon
                       className="flex items-center gap-1 text-blue-500 transition-colors hover:text-blue-600"
                       aria-label="Reveal company email"
                     >
-                      <span className="text-[10px] text-gray-400">1 credit</span>
+                      
                       <Eye className="size-4" />
                     </button>
                   </div>

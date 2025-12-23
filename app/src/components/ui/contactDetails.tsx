@@ -156,7 +156,15 @@ const ContactDetails = () => {
     const merged = [...emails, ...workEmail, ...personalEmail, ...email]
       .map((e) => (typeof e === "string" ? { address: e } : (e as { address?: string; type?: string })))
       .filter((e) => !!e.address)
-    return merged.map((e) => ({ address: e.address!, type: e.type }))
+    // Deduplicate by address
+    const seen = new Map<string, { address: string; type?: string }>()
+    merged.forEach((e) => {
+      const key = e.address!.toLowerCase()
+      if (!seen.has(key)) {
+        seen.set(key, { address: e.address!, type: e.type })
+      }
+    })
+    return Array.from(seen.values())
   })()
 
   const workEmails = contactEmailsAll.filter((e) => !e.type || /work|business/i.test(e.type))
@@ -171,7 +179,15 @@ const ContactDetails = () => {
       .map((p) => (typeof p === "string" ? { number: p } : (p as { number?: string; phone_number?: string; type?: string })))
       .map((p) => ({ number: p.phone_number || p.number || "", type: p.type }))
       .filter((p) => !!p.number)
-    return merged
+    // Deduplicate by number (remove non-digits for comparison)
+    const seen = new Map<string, { number: string; type?: string }>()
+    merged.forEach((p) => {
+      const key = p.number.replace(/\D/g, '')
+      if (key && !seen.has(key)) {
+        seen.set(key, { number: p.number, type: p.type })
+      }
+    })
+    return Array.from(seen.values())
   })()
 
   const mobilePhones = contactPhonesAll.filter((p) => !p.type || /mobile/i.test(p.type))
@@ -254,12 +270,16 @@ const ContactDetails = () => {
   // Reveal logic
   const handleContactReveal = async (fieldType: "email" | "phone", index?: number) => {
     if (!resolvedContact?._id) return
-    const requiredCredits = fieldType === "phone" ? 4 : 1
-    const balance = billingUsage?.balance as number | undefined
-    if (balance !== undefined && balance < requiredCredits) {
-      dispatch(setCreditUsageOpen(true))
-      return
+    
+    // Only check credits for phone reveals (4 credits), email is free
+    if (fieldType === "phone") {
+      const balance = billingUsage?.balance as number | undefined
+      if (balance !== undefined && balance < 4) {
+        dispatch(setCreditUsageOpen(true))
+        return
+      }
     }
+    
     const fieldKey = fieldType === "email" ? `contact_email_${index ?? "main"}` : `contact_phone_${index ?? "main"}`
     const requestId = crypto.randomUUID?.() || `${Date.now()}`
     try {
@@ -285,14 +305,17 @@ const ContactDetails = () => {
         showAlert("Information unavailable", `No ${fieldType} available to reveal`, "warning", 4000)
       }
     } catch (error: unknown) {
-      const status = (error as { status?: number })?.status
-      const dataError =
-        typeof error === "object" && error !== null && "data" in (error as Record<string, unknown>)
-          ? (error as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        dispatch(setCreditUsageOpen(true))
-        return
+      // Only handle insufficient credits for phone reveals
+      if (fieldType === "phone") {
+        const status = (error as { status?: number })?.status
+        const dataError =
+          typeof error === "object" && error !== null && "data" in (error as Record<string, unknown>)
+            ? (error as { data?: { error?: string } }).data?.error || null
+            : null
+        if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
+          dispatch(setCreditUsageOpen(true))
+          return
+        }
       }
       showAlert("Reveal failed", "Please try again later", "error", 5000)
     }
@@ -300,12 +323,8 @@ const ContactDetails = () => {
 
   const handleCompanyReveal = async (fieldType: "email" | "phone", index?: number) => {
     if (!company?._id) return
-    const requiredCredits = fieldType === "phone" ? 4 : 1
-    const balance = billingUsage?.balance as number | undefined
-    if (balance !== undefined && balance < requiredCredits) {
-      dispatch(setCreditUsageOpen(true))
-      return
-    }
+    
+    // Company reveals are free - no credit check needed
     const fieldKey = fieldType === "email" ? `company_email_${index ?? "main"}` : `company_phone_${index ?? "main"}`
 
     try {
@@ -337,15 +356,7 @@ const ContactDetails = () => {
         setRevealedFields((prev) => new Set([...prev, fieldKey]))
       }
     } catch (error: unknown) {
-      const status = (error as { status?: number })?.status
-      const dataError =
-        typeof error === "object" && error !== null && "data" in (error as Record<string, unknown>)
-          ? (error as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        dispatch(setCreditUsageOpen(true))
-        return
-      }
+      // Company reveals are free - no credit handling needed
       showAlert("Reveal failed", "Please try again later", "error", 5000)
     }
   }
@@ -548,10 +559,7 @@ const ContactDetails = () => {
                                       )
                                     }
                                   >
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[10px] text-gray-500">1 Credit</span>
-                                      <Eye className="size-3.5" />
-                                    </div>
+                                    <Eye className="size-3.5" />
                                   </Button>
                                 </div>
                               </div>
@@ -583,10 +591,7 @@ const ContactDetails = () => {
                                       )
                                     }
                                   >
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[10px] text-gray-500">1 Credit</span>
-                                      <Eye className="size-3.5" />
-                                    </div>
+                                    <Eye className="size-3.5" />
                                   </Button>
                                 </div>
                               </div>
@@ -720,7 +725,7 @@ const ContactDetails = () => {
                               onClick={() => handleCompanyReveal("phone", idx)}
                             >
                               <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-gray-500">4 Credits</span>
+                             
                                 <Eye className="size-3.5" />
                               </div>
                             </Button>
@@ -744,10 +749,7 @@ const ContactDetails = () => {
                               className="size-8 rounded-lg hover:bg-gray-100"
                               onClick={() => handleCompanyReveal("email", idx)}
                             >
-                              <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-gray-500">1 Credit</span>
-                                <Eye className="size-3.5" />
-                              </div>
+                              <Eye className="size-3.5" />
                             </Button>
                           </div>
                         ))}

@@ -295,7 +295,7 @@ export function DataTable<T>({
                 </TableRow>
               ) : (
                 data.map((row, rowIndex) => {
-                  const itemId = row.id || rowIndex.toString()
+                  const itemId = (row.id as string | undefined) ?? rowIndex.toString()
                   const isSelected = selectedItems.includes(itemId)
 
                   return (

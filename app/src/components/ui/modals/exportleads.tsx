@@ -175,15 +175,15 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
         if (!isOpen) onClose()
       }}
     >
-      <DialogTitle className="sr-only">Dialog</DialogTitle>
+      <DialogTitle className="sr-only ">Dialog</DialogTitle>
       <DialogDescription className="sr-only">Internal dialog content</DialogDescription>
-      <DialogContent className="max-w-[400px] rounded-xl border p-0">
+      <DialogContent className="max-w-[400px]  max-h-[600px] overflow-y-auto rounded-xl border p-0  ">
         <DialogHeader className="flex flex-row items-start justify-between border-b border-border p-5">
           <DialogTitle className="flex flex-row items-center gap-3.5">
             <span className="flex items-center justify-center rounded-full border p-[10px]">
               <DownloadIcon className="size-5 text-gray-600" />
             </span>
-            <div className="flex flex-col items-start">
+            <div className="flex flex-col items-start ">
               <span className="text-sm font-medium text-gray-950">Export Leads</span>
               <span className="text-xs font-normal text-gray-600">Download Leads in CSV Format</span>
             </div>
@@ -191,7 +191,7 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
           <DialogDescription className="sr-only">Choose export options for your leads.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5 p-5">
+        <div className="flex flex-col gap-5 p-5 ">
           {/* Export selected leads */}
           <label className="flex cursor-pointer items-center gap-3">
             <div className="relative">

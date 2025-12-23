@@ -197,15 +197,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
         showAlert("Reveal unavailable", "No email available to reveal", "warning", 4000)
       }
     } catch (e: unknown) {
-      const status = (e as { status?: number })?.status
-      const dataError =
-        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
-          ? (e as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        handleInsufficientCredits()
-        return
-      }
+      // Email reveal is free - no credit handling needed
       showAlert("Reveal failed", "Unable to reveal email", "error", 5000)
     }
   }
@@ -214,6 +206,13 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
     if (revealedFields.has("phone")) return
     const id = contact?._id
     if (!id) return
+
+    // Check if user has enough credits (4 credits for phone reveal)
+    const balance = billingUsage?.balance as number | undefined
+    if (balance !== undefined && balance < 4) {
+      handleInsufficientCredits()
+      return
+    }
 
     const requestId = crypto && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`
     try {
@@ -255,15 +254,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
         setRevealedFields(newRevealed)
       }
     } catch (e: unknown) {
-      const status = (e as { status?: number })?.status
-      const dataError =
-        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
-          ? (e as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        handleInsufficientCredits()
-        return
-      }
+      // Company phone reveal is free - no credit handling needed
       showAlert("Reveal failed", "Unable to reveal company phone", "error", 5000)
     }
   }
@@ -283,15 +274,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
         setRevealedFields(newRevealed)
       }
     } catch (e: unknown) {
-      const status = (e as { status?: number })?.status
-      const dataError =
-        typeof e === "object" && e !== null && "data" in (e as Record<string, unknown>)
-          ? (e as { data?: { error?: string } }).data?.error || null
-          : null
-      if (status === 402 || dataError === "INSUFFICIENT_CREDITS") {
-        handleInsufficientCredits()
-        return
-      }
+      // Company email reveal is free - no credit handling needed
       showAlert("Reveal failed", "Unable to reveal company email", "error", 5000)
     }
   }
@@ -481,7 +464,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
                       </span>
                       <button onClick={toggleRevealCompanyPhone} className="text-blue-500 hover:text-blue-600" aria-label="Reveal company phone">
                         <Eye className="mr-1 size-4" />
-                        <span className="text-xs">4 credits</span>
+                        
                       </button>
                     </div>
                   </div>
@@ -507,7 +490,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
                       </span>
                       <button onClick={toggleRevealEmail} className="text-blue-500 transition-colors hover:text-blue-600" aria-label="Reveal email">
                         <Eye className="mr-1 size-4" />
-                        <span className="text-xs">1 credit</span>
+                        
                       </button>
                     </div>
                   </div>
@@ -618,7 +601,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
                   </p>
                   <button onClick={toggleRevealCompanyPhone} className="text-blue-500 hover:text-blue-600" aria-label="Reveal company phone">
                     <Eye className="mr-1 size-4" />
-                    <span className="text-xs">4 credits</span>
+                  
                   </button>
                 </div>
               </div>
@@ -649,7 +632,7 @@ const ContactInformation = ({ contact, onClose, hideContactFields = false, hideC
                     </p>
                     <button onClick={toggleRevealCompanyEmail} className="text-blue-500 hover:text-blue-600" aria-label="Reveal company email">
                       <Eye className="mr-1 size-4" />
-                      <span className="text-xs">1 credit</span>
+                    
                     </button>
                   </div>
                 </div>

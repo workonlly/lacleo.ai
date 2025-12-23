@@ -85,6 +85,11 @@ export function CompaniesTable() {
   const [infoCompanyContact, setInfoCompanyContact] = useState<ContactAttributes | null>(null)
   const [infoCompanyDetails, setInfoCompanyDetails] = useState<CompanyAttributes | null>(null)
 
+  // Debug: track export modal state
+  useEffect(() => {
+    console.log("CompaniesTable: isExportOpen", isExportOpen)
+  }, [isExportOpen])
+
   const handlePageChange = (newPage: number) => {
     setPagination((prev) => ({
       ...prev,
@@ -111,6 +116,14 @@ export function CompaniesTable() {
   const semanticQuery = useAppSelector(selectSemanticQuery)
   const filterDsl = useMemo(() => buildSearchQuery(selectedFilters, activeFilters), [selectedFilters, activeFilters])
 
+  // Debug: log the DSL being built
+  useEffect(() => {
+    if (Object.keys(filterDsl.company).length > 0 || Object.keys(filterDsl.contact).length > 0) {
+      console.log("❄️ Built DSL:", JSON.stringify(filterDsl, null, 2))
+      console.log("❄️ Selected Filters Redux:", selectedFilters)
+    }
+  }, [filterDsl, selectedFilters])
+
   const queryParams = useMemo(
     () => ({
       // Only include search term if it is valid (>= 2 chars) to avoid 422 errors
@@ -130,9 +143,38 @@ export function CompaniesTable() {
     [pagination.page, pagination.count, sortSelected]
   )
 
-  const searchUrl = useMemo(() => buildSearchUrl(searchParams, queryParams), [searchParams, queryParams])
+  const searchUrl = useMemo(() => {
+    const url = buildSearchUrl(searchParams, queryParams)
+    if (Object.keys(filterDsl.company).length > 0 || Object.keys(filterDsl.contact).length > 0) {
+      console.log("❄️ Encoded Search URL:", url)
+    }
+    return url
+  }, [searchParams, queryParams, filterDsl])
 
   const { data, isLoading, isFetching } = useSearchContactsQuery({ type: "company", buildParams: searchUrl }, { refetchOnMountOrArgChange: true })
+
+  // Derive company_phone for selected companies from the search response
+  const companyData = (data as SearchApiResponse<CompanyAttributes> | undefined)?.data || []
+
+  const selectedCompanyPhones = useMemo(() => {
+    const matching = companyData.filter((item) => selectedCompanies.includes(item.id || ""))
+    return matching
+      .map((item) => {
+        const attrs = item.attributes as CompanyAttributes
+        return attrs.company_phone || attrs.phone_number || attrs.phone || ""
+      })
+      .filter((phone) => phone !== "")
+  }, [companyData, selectedCompanies])
+
+  const selectedCompanyExportIds = useMemo(() => {
+    return companyData
+      .filter((item) => selectedCompanies.includes(item.id || ""))
+      .map((item) => (item.id as string) || "")
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+  }, [companyData, selectedCompanies])
+
+  // Debug: log phones for selected companies
+
 
   const sortableFields = ["company", "website", "company_linkedin_url"]
 
@@ -340,7 +382,7 @@ export function CompaniesTable() {
 
   return (
     // <Card className="h-full border-gray-200 bg-white backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950">
-    <CardContent className="h-full ">
+    <CardContent className="h-full   ">
       <div className="flex h-full flex-col">
         {/* NEW: Show selected count */}
         {selectedCompanies.length > 0 && (
@@ -348,7 +390,7 @@ export function CompaniesTable() {
             <span className="text-xs">{selectedCompanies.length} selected</span>
             <Button
               variant="default"
-              className="h-[28px] bg-[#476CFF19] px-1.5 py-1 text-sm font-medium text-[#335CFF] hover:bg-[#476CFF19] hover:text-[#335CFF]"
+              className="h-[28px]  bg-[#476CFF19] px-1.5 py-1 text-sm font-medium text-[#335CFF] hover:bg-[#476CFF19] hover:text-[#335CFF]"
               onClick={() => setIsExportOpen(true)}
             >
               <DownloadIcon className="size-5 text-[#335CFF]" />
@@ -388,13 +430,13 @@ export function CompaniesTable() {
         onClose={() => setIsExportOpen(false)}
         selectedCount={selectedCompanies.length}
         totalAvailable={pagination.total}
-        selectedIds={selectedCompanies}
+        selectedIds={selectedCompanyExportIds}
         type="companies"
       />
       <Dialog open={!!infoCompanyContact} onOpenChange={(open) => !open && (setInfoCompanyContact(null), setInfoCompanyDetails(null))}>
         <DialogPortal>
           <DialogOverlay />
-          <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-[424px] border-l border-stone-200 bg-white shadow-xl focus:outline-none">
+          <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-[424px] border-l border-stone-200 bg-white shadow-xl  focus:outline-none">
             <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
             <DialogPrimitive.Description className="sr-only">Internal dialog content</DialogPrimitive.Description>
             <ContactInformation

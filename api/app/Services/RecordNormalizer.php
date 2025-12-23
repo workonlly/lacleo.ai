@@ -87,6 +87,66 @@ class RecordNormalizer
             $departments = [$departments];
         }
 
+        // Extract work_email and personal_email from emails array if not present as flat fields
+        $workEmail = $doc['work_email'] ?? null;
+        $personalEmail = $doc['personal_email'] ?? null;
+        
+        if (!$workEmail && !empty($emails)) {
+            // First email with type 'work' or just first email
+            foreach ($emails as $e) {
+                if (isset($e['type']) && $e['type'] === 'work') {
+                    $workEmail = $e['email'];
+                    break;
+                }
+            }
+            if (!$workEmail) {
+                $workEmail = $emails[0]['email'] ?? null;
+            }
+        }
+        
+        if (!$personalEmail && !empty($emails)) {
+            // First email with type 'personal' or second email if different from work
+            foreach ($emails as $e) {
+                if (isset($e['type']) && $e['type'] === 'personal') {
+                    $personalEmail = $e['email'];
+                    break;
+                }
+            }
+            if (!$personalEmail && count($emails) > 1) {
+                $personalEmail = $emails[1]['email'] ?? null;
+            }
+        }
+
+        // Extract mobile_number and direct_number from phones array if not present as flat fields
+        $mobileNumber = $doc['mobile_number'] ?? null;
+        $directNumber = $doc['direct_number'] ?? null;
+        
+        if (!$mobileNumber && !empty($phones)) {
+            // First phone with type 'mobile' or just first phone
+            foreach ($phones as $p) {
+                if (isset($p['type']) && in_array($p['type'], ['mobile', 'cell'])) {
+                    $mobileNumber = $p['phone_number'];
+                    break;
+                }
+            }
+            if (!$mobileNumber) {
+                $mobileNumber = $phones[0]['phone_number'] ?? null;
+            }
+        }
+        
+        if (!$directNumber && !empty($phones)) {
+            // First phone with type 'direct' or 'work', or second phone if different from mobile
+            foreach ($phones as $p) {
+                if (isset($p['type']) && in_array($p['type'], ['direct', 'work', 'office'])) {
+                    $directNumber = $p['phone_number'];
+                    break;
+                }
+            }
+            if (!$directNumber && count($phones) > 1) {
+                $directNumber = $phones[1]['phone_number'] ?? null;
+            }
+        }
+
         return [
             'id' => $id,
             'domain' => $domain,
@@ -94,12 +154,12 @@ class RecordNormalizer
             'last_name' => $last,
             'full_name' => $full,
             'title' => $title,
-            'work_email' => $doc['work_email'] ?? null,
-            'personal_email' => $doc['personal_email'] ?? null,
+            'work_email' => $workEmail,
+            'personal_email' => $personalEmail,
             'emails' => $emails,
             'phones' => $phones,
-            'mobile_number' => $doc['mobile_number'] ?? null,
-            'direct_number' => $doc['direct_number'] ?? null,
+            'mobile_number' => $mobileNumber,
+            'direct_number' => $directNumber,
             'person_linkedin_url' => $linkedin,
             'city' => $city,
             'state' => $state,

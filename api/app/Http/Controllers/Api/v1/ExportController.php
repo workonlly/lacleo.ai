@@ -10,9 +10,19 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class ExportController extends Controller
 {
+    /**
+     * Decode company ID by converting + to spaces (from URL encoding)
+     */
+    private static function decodeCompanyId(string $id): string
+    {
+        // Replace + with space (form-encoded spaces) and then urldecode for other encoded chars
+        return urldecode(str_replace('+', ' ', $id));
+    }
+
     private static function EXPORT_PAGE_SIZE(): int
     {
         return 50000;
@@ -80,18 +90,50 @@ class ExportController extends Controller
                         }
                     }
                 } else {
+                    Log::info('ExportController preview - companies input', ['ids_count' => count($validated['ids']), 'ids' => $validated['ids']]);
                     $companies = array_map(function ($id) {
                         try {
-                            return Company::findInElastic($id);
+                            // Decode ID: convert + to spaces and handle other URL encoding
+                            $decodedId = self::decodeCompanyId($id);
+                            $company = null;
+                            
+                            try {
+                                $company = Company::findInElastic($decodedId);
+                                Log::info('ExportController preview - findInElastic found', ['id' => $id, 'decoded_id' => $decodedId]);
+                            } catch (\Exception $lookupEx) {
+                                Log::info('ExportController preview - findInElastic not found', ['id' => $id, 'decoded_id' => $decodedId, 'error' => $lookupEx->getMessage()]);
+                            }
+                            
+                            // If not found by exact ID, try to find by domain
+                            if (!$company && strpos($decodedId, '__') !== false) {
+                                $domain = explode('__', $decodedId)[0]; // Extract domain from "domain__name__" format
+                                Log::info('ExportController preview - finding by domain fallback', ['id' => $id, 'domain' => $domain]);
+                                $paginated = Company::elastic()->filter(['term' => ['website' => $domain]])->paginate(1, 1);
+                                $results = $paginated['data'] ?? [];
+                                if (count($results) > 0) {
+                                    $company = $results[0];
+                                    Log::info('ExportController preview - found by domain fallback', ['domain' => $domain, 'found' => true]);
+                                }
+                            }
+                            
+                            return $company;
                         } catch (\Exception $e) {
+                            Log::error('ExportController preview - fatal error', ['id' => $id, 'error' => $e->getMessage()]);
                             return null;
                         }
                     }, $validated['ids']);
+                    Log::info('ExportController preview - companies after mapping', ['count' => count($companies)]);
                     $companies = array_values(array_filter($companies));
+                    Log::info('ExportController preview - companies after filtering', ['count' => count($companies)]);
                     $companiesNorm = array_map(function ($c) {
                         return $c ? RecordNormalizer::normalizeCompany(is_array($c) ? $c : $c->toArray()) : null;
                     }, $companies);
                     $companiesNorm = array_values(array_filter($companiesNorm));
+
+                    Log::info('ExportController preview companies', [
+                        'companies_fetched' => count($companies),
+                        'companies_norm' => count($companiesNorm),
+                    ]);
 
                     $builder = Contact::elastic()->index((new Contact())->elasticReadAlias());
                     foreach ($companiesNorm as $company) {
@@ -246,22 +288,51 @@ class ExportController extends Controller
         if ($validated['type'] === 'contacts') {
             $result = Contact::elastic()->index((new Contact())->elasticReadAlias())
                 ->filter(['terms' => ['_id' => $validated['ids']]])
-                ->select(['full_name', 'emails', 'phone_numbers', 'phone_number', 'mobile_phone', 'company', 'website', 'title', 'department'])
                 ->paginate(1, $limit);
             $contacts = array_map(fn($c) => RecordNormalizer::normalizeContact($c), $result['data']);
         } else {
+            Log::info('ExportController export - companies input', ['ids_count' => count($validated['ids']), 'ids' => $validated['ids']]);
             $companies = array_map(function ($id) {
                 try {
-                    return Company::findInElastic($id);
+                    // Decode ID: convert + to spaces and handle other URL encoding
+                    $decodedId = self::decodeCompanyId($id);
+                    $company = null;
+                    
+                    try {
+                        $company = Company::findInElastic($decodedId);
+                        Log::info('ExportController export - findInElastic found', ['id' => $id, 'decoded_id' => $decodedId]);
+                    } catch (\Exception $lookupEx) {
+                        Log::info('ExportController export - findInElastic not found', ['id' => $id, 'decoded_id' => $decodedId, 'error' => $lookupEx->getMessage()]);
+                    }
+                    
+                    // If not found by exact ID, try to find by domain
+                    if (!$company && strpos($decodedId, '__') !== false) {
+                        $domain = explode('__', $decodedId)[0]; // Extract domain from "domain__name__" format
+                        Log::info('ExportController export - finding by domain fallback', ['id' => $id, 'domain' => $domain]);
+                        $paginated = Company::elastic()->filter(['term' => ['website' => $domain]])->paginate(1, 1);
+                        $results = $paginated['data'] ?? [];
+                        if (count($results) > 0) {
+                            $company = $results[0];
+                            Log::info('ExportController export - found by domain fallback', ['domain' => $domain, 'found' => true]);
+                        }
+                    }
+                    
+                    return $company;
                 } catch (\Exception $e) {
+                    Log::error('ExportController export - fatal error', ['id' => $id, 'error' => $e->getMessage()]);
                     return null;
                 }
             }, $validated['ids']);
+            Log::info('ExportController export - companies after mapping', ['count' => count($companies)]);
             $companies = array_values(array_filter($companies));
+            Log::info('ExportController export - companies after filtering', ['count' => count($companies)]);
             $companiesNorm = array_map(function ($c) {
                 return $c ? RecordNormalizer::normalizeCompany(is_array($c) ? $c : $c->toArray()) : null;
             }, $companies);
             $companiesNorm = array_values(array_filter($companiesNorm));
+
+            // Debug: how many companies fetched/normalized for export
+            Log::info('ExportController export - companies_fetched', ['companies_fetched' => count($companies), 'companies_norm' => count($companiesNorm)]);
 
             $builder = Contact::elastic()->index((new Contact())->elasticReadAlias());
             foreach ($companiesNorm as $company) {
@@ -273,8 +344,7 @@ class ExportController extends Controller
                 }
             }
             $builder->setBoolParam('minimum_should_match', 1);
-            $contacts = array_map(fn($c) => RecordNormalizer::normalizeContact($c), $builder->select(['full_name', 'emails', 'phone_numbers', 'phone_number', 'mobile_phone', 'company', 'website', 'title', 'department'])
-                ->paginate(1, $limit)['data']);
+            $contacts = array_map(fn($c) => RecordNormalizer::normalizeContact($c), $builder->paginate(1, $limit)['data']);
             // attach normalized companies for CSV join
             $request->attributes->add(['export_companies' => $companiesNorm]);
         }
