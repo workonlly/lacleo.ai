@@ -373,6 +373,12 @@ class ExportCsvBuilder
         $out = fopen('php://temp', 'r+');
         fputcsv($out, $headers);
 
+        // If no checkboxes are selected, return only headers (no data rows)
+        if (!$emailSelected && !$phoneSelected) {
+            rewind($out);
+            return stream_get_contents($out);
+        }
+
         foreach ($contactsNorm as $c) {
             // Extract company location sub-fields if they exist
             $companyLocation = $c['company_location'] ?? $c['location'] ?? [];
@@ -493,6 +499,12 @@ class ExportCsvBuilder
 
         $out = fopen('php://temp', 'r+');
         fputcsv($out, $headers);
+
+        // If no checkboxes are selected, return only headers (no data rows)
+        if (!$emailSelected && !$phoneSelected) {
+            rewind($out);
+            return stream_get_contents($out);
+        }
 
         foreach ($companiesNorm as $company) {
             // Extract location sub-fields
