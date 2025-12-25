@@ -19,6 +19,7 @@ import { JobTitleFilter } from "./components/JobTitleFilter"
 import { DepartmentFilter } from "./components/DepartmentFilter"
 import { TechnologyFilter } from "./components/TechnologyFilter"
 import { LocationFilter } from "./components/LocationFilter"
+import { LocationFieldFilter } from "./components/LocationFieldFilter"
 import BulkCompanyInputDialog from "./components/BulkCompanyInputDialog"
 import {
   addSelectedItem,
@@ -147,16 +148,19 @@ export const Filters = () => {
   }, [yoeRange, dispatch, personalSectionId, currentYoeId])
 
   // Helper to get options
-  const getOptionsForSection = (section: "employeeCount" | "companyRevenue") => {
+  const getOptionsForSection = (section: "employeeCount" | "companyRevenue" | "annualRevenue" | "foundedYear" | "totalFunding") => {
     if (section === "employeeCount") return ["1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10000+"]
     if (section === "companyRevenue") return ["0-1M", "1M-10M", "10M-50M", "50M-100M", "100M-250M", "250M-500M", "500M-1B", "1B-10B", "10B+"]
+    if (section === "annualRevenue") return ["0-1M", "1M-10M", "10M-50M", "50M-100M", "100M-250M", "250M-500M", "500M-1B", "1B-10B", "10B+"]
+    if (section === "totalFunding") return ["0-1M", "1M-10M", "10M-50M", "50M-100M", "100M-500M", "500M-1B", "1B+"]
+    if (section === "foundedYear") return ["Before 1950", "1950-1970", "1970-1990", "1990-2000", "2000-2010", "2010-2015", "2015-2020", "2020+"]
     return []
   }
 
   const renderCheckboxListSection = (args: {
-    id: "employee_count" | "company_revenue"
+    id: "employee_count" | "company_revenue" | "annual_revenue" | "founded_year" | "total_funding" | "annual_revenue_contact" | "founded_year_contact" | "total_funding_contact" | "employee_count_contact"
     title: string
-    section: "employeeCount" | "companyRevenue"
+    section: "employeeCount" | "companyRevenue" | "annualRevenue" | "foundedYear" | "totalFunding"
   }) => {
     const { id, title, section } = args
     const isOpen = !!expandedSections[id]
@@ -180,6 +184,26 @@ export const Filters = () => {
             ))}
           </div>
         )}
+      </div>
+    )
+  }
+
+  const renderCheckboxList = (args: {
+    id: "employee_count" | "company_revenue" | "annual_revenue" | "founded_year" | "total_funding" | "annual_revenue_contact" | "founded_year_contact" | "total_funding_contact" | "employee_count_contact"
+    section: "employeeCount" | "companyRevenue" | "annualRevenue" | "foundedYear" | "totalFunding"
+  }) => {
+    const { id, section } = args
+    const options = getOptionsForSection(section)
+    const currentSelected = selectedItems[id]?.map((i) => i.id) || []
+
+    return (
+      <div className="space-y-3">
+        {options.map((option) => (
+          <label key={option} className="flex cursor-pointer items-center gap-3">
+            <Checkbox checked={currentSelected.includes(option)} onChange={() => toggleCompanyOption(id, option)} />
+            <span className="text-sm font-normal text-gray-900 dark:text-gray-100">{option}</span>
+          </label>
+        ))}
       </div>
     )
   }
@@ -235,9 +259,15 @@ export const Filters = () => {
             company_headcount_contact: 5,
             company_revenue: 6,
             company_revenue_range: 6,
-            company_location: 7,
-            company_headquarters: 8,
-            company_founded_year: 9
+            annual_revenue: 7,
+            founded_year: 8,
+            total_funding: 9,
+            company_location: 10,
+            company_headquarters: 10,
+            company_country: 11,
+            company_state: 12,
+            company_city: 13,
+            company_founded_year: 14
           }
 
           const getP = (id: string) => priorityMap[id] || 100
@@ -334,12 +364,40 @@ export const Filters = () => {
                             <JobTitleFilter />
                           ) : filter.id === "departments" ? (
                             <DepartmentFilter />
-                          ) : filter.id === "contact_location" ? (
-                            <LocationFilter scope="contact" />
-                          ) : ["company_location", "company_headquarters"].includes(filter.id) ? (
-                            <LocationFilter scope="company" />
-                          ) : filter.id === "technologies" ? (
+                          ) : ["technologies", "company_technologies_contact"].includes(filter.id) ? (
                             <TechnologyFilter />
+                          ) : filter.id === "company_country" ? (
+                            <LocationFieldFilter filterId="company_country" fieldName="country" scope="company" placeholder="Search country..." />
+                          ) : filter.id === "company_state" ? (
+                            <LocationFieldFilter filterId="company_state" fieldName="state" scope="company" placeholder="Search state..." />
+                          ) : filter.id === "company_city" ? (
+                            <LocationFieldFilter filterId="company_city" fieldName="city" scope="company" placeholder="Search city..." />
+                          ) : filter.id === "contact_country" ? (
+                            <LocationFieldFilter filterId="contact_country" fieldName="country" scope="contact" placeholder="Search country..." />
+                          ) : filter.id === "contact_state" ? (
+                            <LocationFieldFilter filterId="contact_state" fieldName="state" scope="contact" placeholder="Search state..." />
+                          ) : filter.id === "contact_city" ? (
+                            <LocationFieldFilter filterId="contact_city" fieldName="city" scope="contact" placeholder="Search city..." />
+                          ) : filter.id === "company_country_contact" ? (
+                            <LocationFieldFilter filterId="company_country_contact" fieldName="country" scope="contact" placeholder="Search company country..." />
+                          ) : filter.id === "company_state_contact" ? (
+                            <LocationFieldFilter filterId="company_state_contact" fieldName="state" scope="contact" placeholder="Search company state..." />
+                          ) : filter.id === "company_city_contact" ? (
+                            <LocationFieldFilter filterId="company_city_contact" fieldName="city" scope="contact" placeholder="Search company city..." />
+                          ) : filter.id === "annual_revenue" ? (
+                            renderCheckboxList({ id: "annual_revenue", section: "annualRevenue" })
+                          ) : filter.id === "founded_year" ? (
+                            renderCheckboxList({ id: "founded_year", section: "foundedYear" })
+                          ) : filter.id === "total_funding" ? (
+                            renderCheckboxList({ id: "total_funding", section: "totalFunding" })
+                          ) : filter.id === "annual_revenue_contact" ? (
+                            renderCheckboxList({ id: "annual_revenue_contact", section: "annualRevenue" })
+                          ) : filter.id === "founded_year_contact" ? (
+                            renderCheckboxList({ id: "founded_year_contact", section: "foundedYear" })
+                          ) : filter.id === "total_funding_contact" ? (
+                            renderCheckboxList({ id: "total_funding_contact", section: "totalFunding" })
+                          ) : filter.id === "employee_count_contact" ? (
+                            renderCheckboxList({ id: "employee_count_contact", section: "employeeCount" })
                           ) : (
                             <>
                               {["company_domain_company", "company_domain_contact", "company_name_company"].includes(filter.id) && (

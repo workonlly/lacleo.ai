@@ -27,18 +27,33 @@ export const sectionToKey: Record<string, string> = {
   contact_city: "city",
   contact_has_email: "has_email",
   contact_has_phone: "has_phone",
+  // Contact filters that join to company data
+  company_technologies_contact: "technologies",
+  annual_revenue_contact: "annual_revenue",
+  founded_year_contact: "founded_year",
+  total_funding_contact: "total_funding",
+  employee_count_contact: "employee_count",
+  company_country_contact: "country",
+  company_state_contact: "state",
+  company_city_contact: "city",
 
   // Company filters (context-aware mapping in SearchService handles these)
   company_employee_count: "employee_count",
   employee_count: "employee_count",
   company_revenue_range: "revenue",
   company_revenue: "revenue",
+  annual_revenue: "annual_revenue",
+  founded_year: "founded_year",
+  total_funding: "total_funding",
   company_industries: "industries",
   industry: "industries",
   company_technologies: "technologies",
   technologies: "technologies",
   company_headquarters: "locations",
   company_location: "locations",
+  company_country: "country",
+  company_state: "state",
+  company_city: "city",
   company_founded_year: "founded_year",
   company_domain: "domains",
   company_domain_company: "domains",
@@ -64,19 +79,20 @@ function getSectionIdFromKey(key: string, isCompanyFilter: boolean): string | nu
     seniority: "seniority",
     experience_years: "years_of_experience",
     locations: "contact_location",
-    country: "contact_country",
-    state: "contact_state",
-    city: "contact_city",
+    country: isCompanyFilter ? "company_country" : "contact_country",
+    state: isCompanyFilter ? "company_state" : "contact_state",
+    city: isCompanyFilter ? "company_city" : "contact_city",
     has_email: "contact_has_email",
     has_phone: "contact_has_phone",
 
     // Company filters
     employee_count: "employee_count",
     revenue: "company_revenue_range",
-    annual_revenue: "company_revenue_range",
+    annual_revenue: "annual_revenue",
+    founded_year: "founded_year",
+    total_funding: "total_funding",
     industries: "industry",
     technologies: "technologies",
-    founded_year: "company_founded_year",
     domains: "company_domain_company",
     company_names: "company_name_company",
     company_keywords: "company_keywords",
@@ -157,6 +173,9 @@ const filterSlice = createSlice({
       const companySectionIds = [
         "company_employee_count",
         "company_revenue_range",
+        "annual_revenue",
+        "founded_year",
+        "total_funding",
         "company_industries",
         "company_technologies",
         "company_headquarters",
@@ -164,7 +183,10 @@ const filterSlice = createSlice({
         "company_domain",
         "company_has_email",
         "company_has_phone",
-        "company_location"
+        "company_location",
+        "company_country",
+        "company_state",
+        "company_city"
       ]
 
       companySectionIds.forEach((sectionId) => {
@@ -187,7 +209,16 @@ const filterSlice = createSlice({
         "contact_state",
         "contact_city",
         "contact_has_email",
-        "contact_has_phone"
+        "contact_has_phone",
+        // Contact filters that join to company
+        "company_technologies_contact",
+        "annual_revenue_contact",
+        "founded_year_contact",
+        "total_funding_contact",
+        "employee_count_contact",
+        "company_country_contact",
+        "company_state_contact",
+        "company_city_contact"
       ]
 
       contactSectionIds.forEach((sectionId) => {
