@@ -44,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 'limit.request.size' => \App\Http\Middleware\LimitRequestBodySize::class,
                 'request.timeout' => \App\Http\Middleware\RequestTimeout::class,
                 'csrf.guard' => \App\Http\Middleware\CsrfGuard::class,
+                'attachUserScope' => \App\Http\Middleware\AttachUserWorkspaceHeaders::class,
             ]);
             $middleware->prepend(HandleCors::class);
         })

@@ -109,8 +109,8 @@ class EnsureCreditsForExport
                 'error' => 'INSUFFICIENT_CREDITS',
                 'email_count' => $emailCount,
                 'phone_count' => $phoneCount,
-                'required' => (int) $creditsRequired,
-                'available' => (int) ($workspace->credit_balance ?? 0),
+                'credits_needed' => (int) $creditsRequired,
+                'balance' => (int) ($workspace->credit_balance ?? 0),
             ], 402);
         } elseif (!$isAdmin && $creditsRequired > 0) {
             DB::transaction(function () use ($workspace, $creditsRequired, $requestId, $payload, $emailCount, $phoneCount, $contactsIncluded) {

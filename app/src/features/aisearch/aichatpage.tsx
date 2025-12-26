@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import { AiChatPageProps, Message, SearchCriterion, SearchConfirmationProps } from "./types"
 import LacleoIcon from "../../static/media/avatars/lacleo_avatar.svg?react"
 import LoaderLines from "../../static/media/icons/loader-lines.svg?react"
-import {
+import {  
   applyCriteria,
   finishCriteriaProcessing,
   finishSearch,
@@ -351,6 +351,7 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
 
       try {
         const response = await translateQuery({
+          query, // 👈 THIS IS REQUIRED
           messages: newHistory,
           context: { lastResultCount: lastResultCountRef.current }
         }).unwrap()
@@ -503,9 +504,6 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
           const criteria: SearchCriterion[] = [{ id: "general", label: "Search Type", value: "General Search", checked: true }]
           setCurrentCriteria(criteria)
 
-          // Ensure the global search query is set for the table to pick up
-          dispatch(startSearch(query))
-
           // Create a stable component instance to prevent re-renders
           const confirmationComponent = (
             <SearchConfirmation criteria={criteria} onApply={handleApplySearch} onCriterionChange={handleCriterionChange} disabled={false} />
@@ -546,31 +544,30 @@ const AiChatPage: React.FC<AiChatPageProps> = ({ initialQuery, onBackToHome }) =
     }
   }, [initialQuery, hasProcessedInitialQuery])
 
-  // Reset when initialQuery changes to a new value
+  // Reset when initialQuery changes to a new value (ignore reduxSearchQuery)
   useEffect(() => {
-    const queryToCheck = initialQuery || reduxSearchQuery
-    if (queryToCheck && lastProcessedInitialQuery.current && lastProcessedInitialQuery.current !== queryToCheck) {
+    if (!initialQuery) return
+
+    if (lastProcessedInitialQuery.current && lastProcessedInitialQuery.current !== initialQuery) {
       lastProcessedInitialQuery.current = null
       isProcessingRef.current = false
     }
-  }, [initialQuery, reduxSearchQuery])
+  }, [initialQuery])
 
-  const handleNewSearch = useCallback(
-    (query: string) => {
-      // Disable previous confirmation Apply buttons
-      disablePreviousConfirmations()
-      // Dispatch Redux action for new search
-      dispatch(startSearch(query))
-      // Prevent duplicate processing if same as initial processed query
-      if (lastProcessedInitialQuery.current && lastProcessedInitialQuery.current === query) {
-        return
-      }
-      // Reset processing flag for new searches
-      isProcessingRef.current = false
-      processQuery(query, false)
-    },
-    [processQuery, dispatch, disablePreviousConfirmations]
-  )
+ const handleNewSearch = useCallback(
+  (query: string) => {
+    disablePreviousConfirmations()
+
+    if (lastProcessedInitialQuery.current && lastProcessedInitialQuery.current === query) {
+      return
+    }
+
+    isProcessingRef.current = false
+    processQuery(query, false)
+  },
+  [processQuery, disablePreviousConfirmations]
+)
+
 
   return (
     <div className="flex h-full flex-1 flex-col">

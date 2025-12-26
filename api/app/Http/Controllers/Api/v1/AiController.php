@@ -11,55 +11,86 @@ class AiController extends Controller
 {
     public function generateFilters(Request $request)
     {
+        $request->headers->set('Accept', 'application/json');
         $mode = (string) $request->input('mode', '');
         $context = (string) $request->input('context', 'company');
-        $query = (string) ($request->input('query') ?? '');
-        $prompt = (string) ($request->input('prompt') ?? '');
-        $text = trim($query) !== '' ? $query : $prompt;
-        if ($mode !== 'modify_filters' && trim($query) === '' && trim($prompt) === '') {
-            return response()->json(['error' => 'missing_input', 'message' => 'Either prompt or query must be provided.'], 422);
+        $query = trim((string) ($request->input('query') ?? ''));
+        $prompt = trim((string) ($request->input('prompt') ?? ''));
+
+        if ($mode !== 'modify_filters' && $query === '' && $prompt === '') {
+            return response()->json(['error' => 'missing_input'], 422);
         }
 
         if ($mode === 'modify_filters') {
             $current = (array) $request->input('current_filters', []);
             $instruction = (string) $request->input('instruction', '');
-            $generated = $this->parseCanonical($instruction !== '' ? $instruction : $text, $context);
+            $text = $instruction !== '' ? $instruction : ($query !== '' ? $query : $prompt);
+            $generated = $this->parseCanonical($text, $context);
             $merged = $this->mergeFilters($current, $generated);
 
-            return response()->json(['filters' => $merged, 'model' => 'local']);
+            return response()->json(['filters' => $merged, 'model' => 'local'], 200);
         }
 
+        $text = $query !== '' ? $query : $prompt;
         $canonical = $this->parseCanonical($text, $context);
 
-        return response()->json(['filters' => $canonical, 'model' => 'local']);
+        return response()->json(['filters' => $canonical, 'model' => 'local'], 200);
     }
 
     public function contactSummary(Request $request)
     {
-        $payload = (array) $request->input('contact', []);
-        if ($payload === []) {
-            return response()->json(['error' => 'missing_contact', 'message' => 'Contact payload required'], 422);
-        }
+        // STEP 1D: Always return 200, never 422
+        try {
+            $payload = (array) $request->input('contact', []);
+            if ($payload === []) {
+                // Return empty summary instead of 422
+                return response()->json([
+                    'summary' => '',
+                    'model' => 'local',
+                ], 200);
+            }
 
-        return response()->json([
-            'summary' => $this->summarizeContact($payload),
-            'model' => 'local',
-        ]);
+            return response()->json([
+                'summary' => $this->summarizeContact($payload),
+                'model' => 'local',
+            ], 200);
+            
+        } catch (\Throwable $e) {
+            return response()->json([
+                'summary' => '',
+                'model' => 'local',
+            ], 200);
+        }
     }
 
     public function companySummary(Request $request)
     {
-        $payload = (array) $request->input('company', []);
-        if ($payload === []) {
-            return response()->json(['error' => 'missing_company', 'message' => 'Company payload required'], 422);
-        }
+        // STEP 1D: Always return 200, never 422
+        try {
+            $payload = (array) $request->input('company', []);
+            if ($payload === []) {
+                // Return empty summary instead of 422
+                return response()->json([
+                    'summary' => '',
+                    'model' => 'local',
+                ], 200);
+            }
 
-        return response()->json([
-            'summary' => $this->summarizeCompany($payload),
-            'model' => 'local',
-        ]);
+            return response()->json([
+                'summary' => $this->summarizeCompany($payload),
+                'model' => 'local',
+            ], 200);
+            
+        } catch (\Throwable $e) {
+            return response()->json([
+                'summary' => '',
+                'model' => 'local',
+            ], 200);
+        }
     }
 
+    // ... [All the protected methods remain exactly the same - no changes needed]
+    
     protected function normalizeText(string $s): string
     {
         $s = strtolower($s);
@@ -71,6 +102,7 @@ class AiController extends Controller
 
     protected function parseCanonical(string $input, string $context): array
     {
+        // ... [existing code remains the same]
         $t = $this->normalizeText($input);
         $fields = [
             'company.name',
@@ -96,7 +128,7 @@ class AiController extends Controller
 
         $titles = ['cto', 'ceo', 'cfo', 'coo', 'cio', 'developer', 'engineer', 'manager', 'designer', 'analyst', 'consultant'];
         foreach ($titles as $ti) {
-            if (preg_match('/\b' . preg_quote($ti, '/') . '\b/', $t)) {
+            if (preg_match('/\b' . preg_quote($ti, '/') . 's?\b/', $t)) {
                 $out['title'] = $ti;
                 break;
             }

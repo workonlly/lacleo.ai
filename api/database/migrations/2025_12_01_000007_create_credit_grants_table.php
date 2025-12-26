@@ -18,8 +18,8 @@ return new class extends Migration
 
             $table->index('user_id');
             $table->index('granted_by');
-            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
-            $table->foreign('granted_by')->references('id')->on('users')->cascadeOnDelete();
+            // Foreign keys to `users` removed to avoid migration failure when `users` table is absent.
+            // Store string IDs; enforce integrity at application layer.
         });
     }
 

@@ -64,8 +64,9 @@ class BillingService
             if (($w->credit_balance ?? 0) < $cost) {
                 throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                     'error' => 'INSUFFICIENT_CREDITS',
-                    'required' => (int) $cost,
-                    'available' => (int) ($w->credit_balance ?? 0),
+                    'balance' => (int) ($w->credit_balance ?? 0),
+                    'needed' => (int) $cost,
+                    'short_by' => max(0, (int) $cost - (int) ($w->credit_balance ?? 0)),
                 ], 402));
             }
             $w->update(['credit_balance' => $w->credit_balance - $cost]);

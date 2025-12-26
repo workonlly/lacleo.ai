@@ -23,7 +23,7 @@ class SearchService
 
     public function __construct(
         protected FilterManager $filterManager,
-        protected EmbeddingService $embeddingService
+        protected ?EmbeddingService $embeddingService = null
     ) {
     }
 
@@ -62,8 +62,8 @@ class SearchService
                 // We still want to respect perPage
             }
 
-            // Apply Semantic Search (Vector) if present
-            if ($semanticQuery) {
+            // Apply Semantic Search (Vector) if present and embedding service available
+            if ($semanticQuery && $this->embeddingService) {
                 try {
                     $vector = $this->embeddingService->generate($semanticQuery);
 
@@ -499,157 +499,7 @@ class SearchService
             }
         }
 
-        // --- Locations block ---
-        // Support flexible contact/company location filters: include, exclude, known/unknown
-        if (!empty($filters['locations']) || !empty($filters['company_location']) || !empty($filters['country']) || !empty($filters['state']) || !empty($filters['city'])) {
-            // Log incoming location filters for debugging
-            Log::info('Location filter received', [
-                'type' => $type,
-                'has_locations' => !empty($filters['locations']),
-                'has_company_location' => !empty($filters['company_location']),
-                'company_location_value' => $filters['company_location'] ?? null,
-                'locations_value' => $filters['locations'] ?? null
-            ]);
-
-            // Normalize buckets: allow either `locations: { include, exclude }` or top-level country/state/city keys
-            $locBucket = is_array($filters['locations'] ?? null) ? $filters['locations'] : (is_array($filters['company_location'] ?? null) ? $filters['company_location'] : []);
-            $countryBucket = is_array($filters['country'] ?? null) ? $filters['country'] : [];
-            $stateBucket = is_array($filters['state'] ?? null) ? $filters['state'] : [];
-            $cityBucket = is_array($filters['city'] ?? null) ? $filters['city'] : [];
-
-            // Support both new format (countries/states/cities) and simple format (include/exclude)
-            $simpleInclude = array_values(array_filter(array_map('trim', (array) ($locBucket['include'] ?? [])), 'strlen'));
-            $simpleExclude = array_values(array_filter(array_map('trim', (array) ($locBucket['exclude'] ?? [])), 'strlen'));
-            
-            $incCountries = array_values(array_filter(array_map('trim', (array) ($locBucket['countries'] ?? $countryBucket['include'] ?? $simpleInclude)), 'strlen'));
-            $excCountries = array_values(array_filter(array_map('trim', (array) ($locBucket['countries_exclude'] ?? $countryBucket['exclude'] ?? $simpleExclude)), 'strlen'));
-
-            Log::info('Location filter parsed', [
-                'type' => $type,
-                'simpleInclude' => $simpleInclude,
-                'incCountries' => $incCountries,
-                'excCountries' => $excCountries
-            ]);
-
-            $incStates = array_values(array_filter(array_map('trim', (array) ($locBucket['states'] ?? $stateBucket['include'] ?? [])), 'strlen'));
-            $excStates = array_values(array_filter(array_map('trim', (array) ($locBucket['states_exclude'] ?? $stateBucket['exclude'] ?? [])), 'strlen'));
-
-            $incCities = array_values(array_filter(array_map('trim', (array) ($locBucket['cities'] ?? $cityBucket['include'] ?? [])), 'strlen'));
-            $excCities = array_values(array_filter(array_map('trim', (array) ($locBucket['cities_exclude'] ?? $cityBucket['exclude'] ?? [])), 'strlen'));
-
-            $presence = $locBucket['presence'] ?? ($filters['location_presence'] ?? ($filters['known'] ?? null));
-
-            // Normalizer - lowercase, remove punctuation
-            $normalize = function (string $v): string {
-                $s = mb_strtolower(trim($v));
-                $s = preg_replace('/[\p{P}\p{S}]+/u', ' ', $s);
-                $s = preg_replace('/\s+/u', ' ', $s);
-                return trim($s);
-            };
-
-            // Determine fields to match depending on type
-            if ($type === 'company') {
-                $countryFields = ['country', 'location.country'];
-                $stateFields = ['state', 'location.state'];
-                $cityFields = ['city', 'location.city'];
-            } else {
-                // contact: prefer person location, but include company_obj.* as fallback if searching contacts-by-company
-                $countryFields = ['location.country', 'country', 'company_obj.location.country', 'company_obj.country'];
-                $stateFields = ['location.state', 'state', 'company_obj.location.state', 'company_obj.state'];
-                $cityFields = ['location.city', 'city', 'company_obj.location.city', 'company_obj.city'];
-            }
-
-            // Helper to build per-value clauses across multiple fields
-            $buildIncludeClauses = function (array $values, array $fields) use ($normalize) {
-                $should = [];
-                foreach ($values as $val) {
-                    $n = $normalize($val);
-                    if ($n === '')
-                        continue;
-                    foreach ($fields as $f) {
-                        // Use match query with fuzziness for better matching
-                        $should[] = ['match' => [$f => ['query' => $n, 'operator' => 'and', 'fuzziness' => 'AUTO']]];
-                        // Also add wildcard for partial matches
-                        $should[] = ['wildcard' => [$f => '*' . $n . '*']];
-                    }
-                }
-                return $should;
-            };
-
-            $buildExcludeClauses = function (array $values, array $fields) use ($normalize) {
-                $clauses = [];
-                foreach ($values as $val) {
-                    $n = $normalize($val);
-                    if ($n === '')
-                        continue;
-                    foreach ($fields as $f) {
-                        $clauses[] = ['term' => [$f => ['value' => $n]]];
-                        $clauses[] = ['match_phrase' => [$f => ['query' => $n]]];
-                    }
-                }
-                return $clauses;
-            };
-
-            // Include countries/states/cities
-            if ($incCountries) {
-                Log::info('Building location filter clauses', [
-                    'incCountries' => $incCountries,
-                    'countryFields' => $countryFields
-                ]);
-                $clauses = $buildIncludeClauses($incCountries, $countryFields);
-                Log::info('Location clauses built', [
-                    'clauses_count' => count($clauses),
-                    'clauses' => $clauses
-                ]);
-                if ($clauses)
-                    $filterClauses[] = ['bool' => ['should' => $clauses, 'minimum_should_match' => 1]];
-            }
-            if ($incStates) {
-                $clauses = $buildIncludeClauses($incStates, $stateFields);
-                if ($clauses)
-                    $filterClauses[] = ['bool' => ['should' => $clauses, 'minimum_should_match' => 1]];
-            }
-            if ($incCities) {
-                $clauses = $buildIncludeClauses($incCities, $cityFields);
-                if ($clauses)
-                    $filterClauses[] = ['bool' => ['should' => $clauses, 'minimum_should_match' => 1]];
-            }
-
-            // Exclude
-            if ($excCountries) {
-                $clauses = $buildExcludeClauses($excCountries, $countryFields);
-                foreach ($clauses as $c)
-                    $mustNot[] = $c;
-            }
-            if ($excStates) {
-                $clauses = $buildExcludeClauses($excStates, $stateFields);
-                foreach ($clauses as $c)
-                    $mustNot[] = $c;
-            }
-            if ($excCities) {
-                $clauses = $buildExcludeClauses($excCities, $cityFields);
-                foreach ($clauses as $c)
-                    $mustNot[] = $c;
-            }
-
-            // Presence handling
-            if ($presence === 'known' || $presence === true || $presence === 'true') {
-                // require at least one of the country/state/city fields to exist
-                $existsShould = [];
-                foreach (array_merge($countryFields, $stateFields, $cityFields) as $f) {
-                    $existsShould[] = ['exists' => ['field' => $f]];
-                }
-                if ($existsShould)
-                    $filterClauses[] = ['bool' => ['should' => $existsShould, 'minimum_should_match' => 1]];
-            } elseif ($presence === 'unknown' || $presence === false || $presence === 'false') {
-                // none of those fields should exist
-                foreach (array_merge($countryFields, $stateFields, $cityFields) as $f) {
-                    $mustNot[] = ['exists' => ['field' => $f]];
-                }
-            }
-
-            // End locations block
-        }
+        
 
         // Employee Count (Range)
         if (!empty($filters['employee_count']) && is_array($filters['employee_count'])) {
@@ -1512,8 +1362,6 @@ class SearchService
             'annual_revenue_usd' => 'company_obj.annual_revenue_usd',
             'industry' => 'company_obj.industry',
             'technologies' => 'company_obj.technologies',
-            'country' => 'company_obj.location.country',
-            'city' => 'company_obj.location.city',
             'has_email' => 'emails.email',
             'has_phone' => 'phone_numbers.phone_number',
         ];
@@ -1591,13 +1439,7 @@ class SearchService
                 ],
             ];
 
-            $aggs['locations'] = [
-                'terms' => [
-                    'field' => 'location.country',
-                    'size' => 20,
-                    'min_doc_count' => 1,
-                ],
-            ];
+            
 
             $aggs['technologies'] = [
                 'terms' => [
@@ -1640,13 +1482,7 @@ class SearchService
                 ],
             ];
 
-            $aggs['locations'] = [
-                'terms' => [
-                    'field' => 'location.country',
-                    'size' => 20,
-                    'min_doc_count' => 1,
-                ],
-            ];
+            
 
             $aggs['technologies'] = [
                 'terms' => [
@@ -1835,7 +1671,6 @@ class SearchService
         $formattedAggs = [
             'industries' => $this->mergeTermAggs($indsPrimary, $indsFallback),
             'employee_brackets' => $this->formatRangeAggregation($rawAggs['employee_brackets'] ?? null),
-            'locations' => $this->formatTermsAggregation($rawAggs['locations'] ?? null),
             'technologies' => $this->formatTermsAggregation($rawAggs['technologies'] ?? null),
             'has_email' => isset($rawAggs['has_email']['doc_count']) ? (int) $rawAggs['has_email']['doc_count'] : 0,
             'has_phone' => isset($rawAggs['has_phone']['doc_count']) ? (int) $rawAggs['has_phone']['doc_count'] : 0,
@@ -1910,39 +1745,7 @@ class SearchService
         return $out;
     }
 
-    private function normalizeCountryName(string $country): string
-    {
-        $country = trim($country);
-        if ($country === '') {
-            return $country;
-        }
-        $map = $this->getCountryAbbreviationMap();
-        $upper = strtoupper($country);
-        if (isset($map[$upper])) {
-            return $map[$upper];
-        }
-        // Common aliases
-        $aliases = [
-            'US' => ['usa', 'u.s.', 'u.s.a', 'united states of america', 'america'],
-            'UK' => ['u.k.', 'great britain', 'england', 'gb', 'britain'],
-            'UAE' => ['uae', 'united arab emirates'],
-            'KOREA' => ['south korea', 'republic of korea', 's.korea'],
-        ];
-        foreach ($aliases as $abbr => $list) {
-            foreach ($list as $alias) {
-                if (strcasecmp($country, $alias) === 0) {
-                    return $map[$abbr] ?? $country;
-                }
-            }
-        }
-        // Fallback: try partial match against map values
-        foreach ($map as $abbr => $full) {
-            if (stripos($full, $country) !== false || stripos($country, $full) !== false) {
-                return $full;
-            }
-        }
-        return $country;
-    }
+    
 
     private function expandAbbreviationSynonyms(string $term): array
     {
@@ -2237,72 +2040,7 @@ class SearchService
         ];
     }
 
-    /**
-     * Get country abbreviation to full name mapping
-     */
-    protected function getCountryAbbreviationMap(): array
-    {
-        return [
-            'US' => 'United States',
-            'USA' => 'United States',
-            'UK' => 'United Kingdom',
-            'GB' => 'United Kingdom',
-            'CA' => 'Canada',
-            'AU' => 'Australia',
-            'DE' => 'Germany',
-            'FR' => 'France',
-            'IT' => 'Italy',
-            'ES' => 'Spain',
-            'NL' => 'Netherlands',
-            'BE' => 'Belgium',
-            'CH' => 'Switzerland',
-            'AT' => 'Austria',
-            'SE' => 'Sweden',
-            'NO' => 'Norway',
-            'DK' => 'Denmark',
-            'FI' => 'Finland',
-            'PL' => 'Poland',
-            'IE' => 'Ireland',
-            'PT' => 'Portugal',
-            'GR' => 'Greece',
-            'CZ' => 'Czech Republic',
-            'HU' => 'Hungary',
-            'RO' => 'Romania',
-            'BG' => 'Bulgaria',
-            'HR' => 'Croatia',
-            'SK' => 'Slovakia',
-            'SI' => 'Slovenia',
-            'EE' => 'Estonia',
-            'LV' => 'Latvia',
-            'LT' => 'Lithuania',
-            'JP' => 'Japan',
-            'CN' => 'China',
-            'IN' => 'India',
-            'BR' => 'Brazil',
-            'MX' => 'Mexico',
-            'AR' => 'Argentina',
-            'CL' => 'Chile',
-            'CO' => 'Colombia',
-            'PE' => 'Peru',
-            'ZA' => 'South Africa',
-            'EG' => 'Egypt',
-            'NG' => 'Nigeria',
-            'KE' => 'Kenya',
-            'AE' => 'United Arab Emirates',
-            'SA' => 'Saudi Arabia',
-            'IL' => 'Israel',
-            'TR' => 'Turkey',
-            'RU' => 'Russia',
-            'KR' => 'South Korea',
-            'SG' => 'Singapore',
-            'MY' => 'Malaysia',
-            'TH' => 'Thailand',
-            'VN' => 'Vietnam',
-            'PH' => 'Philippines',
-            'ID' => 'Indonesia',
-            'NZ' => 'New Zealand',
-        ];
-    }
+    
     /**
      * Resolves company filters into a list of matching company domains.
      * This allows "Contact search by Company properties" (Cross-Index Filtering).
@@ -2525,26 +2263,7 @@ class SearchService
                     }
                     break;
 
-                case 'locations':
-                case 'location':
-                    if (is_array($value)) {
-                        $include = $value['include'] ?? [];
-
-                        if (!empty($include)) {
-                            // Normalize country names
-                            $normalizedCountries = array_map(fn($c) => $this->normalizeCountryName($c), $include);
-                            $normalizedCountries = array_filter($normalizedCountries);
-                            
-                            if (!empty($normalizedCountries)) {
-                                // Use terms query for exact country matching
-                                $shouldLoc = [
-                                    'terms' => ['location.country' => $normalizedCountries]
-                                ];
-                                $filterClauses[] = $shouldLoc;
-                            }
-                        }
-                    }
-                    break;
+                
 
                 case 'foundedYear':
                     if (is_array($value)) {

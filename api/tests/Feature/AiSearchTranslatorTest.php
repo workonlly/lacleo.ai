@@ -10,28 +10,26 @@ class AiSearchTranslatorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Mock config to ensure API key "exists" for logic, though Http mock intercepts it
-        config(['services.openai.api_key' => 'test-key']);
+        // Mock Ollama config instead of OpenAI
+        config([
+            'services.ollama.base_url' => 'http://localhost:11434',
+            'services.ollama.chat_model' => 'tinyllama',
+        ]);
     }
 
-    public function test_it_translates_natural_language_to_filters_using_openai()
+    public function test_it_translates_natural_language_to_filters_using_tinyllama()
     {
-        // Mock expected OpenAI response
+        // Mock expected Ollama/TinyLlama response format
         Http::fake([
-            'api.openai.com/*' => Http::response([
-                'choices' => [
-                    [
-                        'message' => [
-                            'content' => json_encode([
-                                'entity' => 'contacts',
-                                'filters' => [
-                                    'title' => ['VP'],
-                                    'location' => ['city' => ['London']],
-                                    'revenue' => ['gte' => 10000000]
-                                ]
-                            ])
-                        ]
-                    ]
+            'localhost:11434/api/chat' => Http::response([
+                'message' => [
+                    'content' => json_encode([
+                        'entity' => 'contacts',
+                        'filters' => [],
+                        'summary' => 'Searching for VP of Sales in London with revenue over 10M.',
+                        'semantic_query' => null,
+                        'custom' => []
+                    ])
                 ]
             ], 200),
         ]);
@@ -41,27 +39,30 @@ class AiSearchTranslatorTest extends TestCase
         ]);
 
         $response->assertStatus(200)
+            ->assertJsonStructure([
+                'entity',
+                'filters',
+                'summary',
+                'semantic_query',
+                'custom'
+            ])
             ->assertJson([
                 'entity' => 'contacts',
-                'filters' => [
-                    'title' => ['VP'],
-                    'location' => ['city' => ['London']],
-                    'revenue' => ['gte' => 10000000]
-                ]
             ]);
 
-        // Assert that the correct prompt was sent (basic check)
+        // Assert that the correct Ollama endpoint was called
         Http::assertSent(function ($request) {
-            return $request->url() == 'https://api.openai.com/v1/chat/completions' &&
-                $request['model'] == 'gpt-4o' &&
-                str_contains($request['messages'][1]['content'], 'VP of Sales');
+            return $request->url() == 'http://localhost:11434/api/chat' &&
+                $request['model'] == 'tinyllama' &&
+                $request['format'] == 'json' &&
+                str_contains($request['messages'][1]['content'] ?? '', 'VP of Sales');
         });
     }
 
-    public function test_it_handles_openai_failure_gracefully()
+    public function test_it_handles_ollama_failure_gracefully()
     {
         Http::fake([
-            'api.openai.com/*' => Http::response('Server Error', 500),
+            'localhost:11434/api/chat' => Http::response('Server Error', 500),
         ]);
 
         $response = $this->postJson('/api/v1/ai/translate-query', [
@@ -69,17 +70,23 @@ class AiSearchTranslatorTest extends TestCase
         ]);
 
         // Expect empty fallback but successful 200 OK response from our API
-        // (The service catches exception/failure and returns safe defaults)
         $response->assertStatus(200)
-            ->assertJson([
-                'entity' => 'contacts',
-                'filters' => []
+            ->assertJsonStructure([
+                'entity',
+                'filters',
+                'summary',
+                'semantic_query',
+                'custom'
             ]);
     }
 
-    public function test_it_respects_missing_api_key()
+    public function test_it_respects_missing_ollama_config()
     {
-        config(['services.openai.api_key' => null]);
+        // Clear Ollama config
+        config([
+            'services.ollama.base_url' => null,
+            'services.ollama.chat_model' => null,
+        ]);
 
         // Should return empty immediately without calling Http
         Http::fake();
@@ -89,11 +96,48 @@ class AiSearchTranslatorTest extends TestCase
         ]);
 
         $response->assertStatus(200)
-            ->assertJson([
-                'entity' => 'contacts',
-                'filters' => []
+            ->assertJsonStructure([
+                'entity',
+                'filters',
+                'summary',
+                'semantic_query',
+                'custom'
             ]);
 
         Http::assertNothingSent();
+    }
+
+    public function test_it_adds_safety_logic_for_job_and_location_keywords()
+    {
+        // Mock empty Ollama response to test safety logic
+        Http::fake([
+            'localhost:11434/api/chat' => Http::response([
+                'message' => [
+                    'content' => json_encode([
+                        'entity' => 'contacts',
+                        'filters' => [],
+                        'summary' => 'Test summary',
+                        'semantic_query' => null,
+                        'custom' => []
+                    ])
+                ]
+            ], 200),
+        ]);
+
+        $response = $this->postJson('/api/v1/ai/translate-query', [
+            'query' => 'engineer in germany'
+        ]);
+
+        $response->assertStatus(200);
+        
+        $filters = $response->json('filters');
+        $this->assertIsArray($filters);
+        $this->assertArrayHasKey('job_title', $filters);
+        $this->assertArrayHasKey('include', $filters['job_title']);
+        $this->assertContains('Engineer', $filters['job_title']['include']);
+        $this->assertArrayHasKey('location', $filters);
+        $this->assertArrayHasKey('include', $filters['location']);
+        $this->assertArrayHasKey('countries', $filters['location']['include']);
+        $this->assertContains('Germany', $filters['location']['include']['countries']);
     }
 }
