@@ -20,6 +20,7 @@ import { ContactAttributes, SearchApiResponse } from "@/interface/searchTable/se
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { Eye, Mail, Phone, User2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useLocation } from "react-router-dom"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters, selectSearchContext } from "../filters/slice/filterSlice"
 import { setLastResultCount, selectSemanticQuery, selectShowResults, setShowResults } from "../aisearch/slice/searchslice"
@@ -87,6 +88,9 @@ const PhoneCountCell = ({ contact }: { contact: ContactAttributes }) => {
 }
 
 export function ContactsTable() {
+  const location = useLocation()
+  const navState = (location.state as { fromAi?: boolean } | null) || null
+  const fromAi = Boolean(navState?.fromAi)
   const dispatch = useAppDispatch()
   const columnsConfigFromStore = useAppSelector((s) => s.columns.configs.contact)
   useDocumentTitle("Search People")
@@ -100,13 +104,7 @@ export function ContactsTable() {
 
   // Sync with global search query
   // const globalSearchQuery = useAppSelector(selectSearchQuery)
-  const [queryValue, setQueryValue] = useState("")
-
-  // Keep local state in sync with global (if updated elsewhere)
-  // useEffect(() => {
-  //   setQueryValue(globalSearchQuery)
-  // }, [globalSearchQuery])
-
+  const [queryValue, setQueryValue] = useState("") 
   const debouncedQueryValue = useDebounce(queryValue, 500)
 
   const handleSearchChange = (val: string) => {
@@ -149,7 +147,6 @@ export function ContactsTable() {
 
   const queryParams = useMemo(
     () => ({
-      // Only include search term if it is valid (>= 2 chars) to avoid 422 errors
       ...(debouncedQueryValue && debouncedQueryValue.length >= 2 && { searchTerm: debouncedQueryValue }),
       ...(semanticQuery && { semantic_query: semanticQuery }),
       ...(filterDsl && { filter_dsl: filterDsl })
@@ -169,9 +166,12 @@ export function ContactsTable() {
   const searchUrl = useMemo(() => buildSearchUrl(searchParams, queryParams), [searchParams, queryParams])
 
   const showResults = useAppSelector(selectShowResults)
+  const hasValidSearchTerm = debouncedQueryValue && debouncedQueryValue.length >= 2
+  const dslReady = useMemo(() => Boolean(filterDsl && (filterDsl.company || filterDsl.contact)), [filterDsl])
+
   const { data, isLoading, isFetching } = useSearchContactsQuery(
     { type: "contact", buildParams: searchUrl },
-    { refetchOnMountOrArgChange: true, skip: !showResults }
+    { refetchOnMountOrArgChange: true, skip: fromAi ? !dslReady : false }
   )
 
   const sortableFields = ["full_name", "website", "title", "linkedin_url", "company"]
@@ -223,12 +223,6 @@ export function ContactsTable() {
           </div>
         )
       }
-    },
-    {
-      title: "Gender",
-      field: "gender",
-      width: "w-1/6",
-      render: (value) => <div className="text-gray-950">{value || "N/A"}</div>
     },
     {
       title: "LinkedIn",
@@ -294,8 +288,8 @@ export function ContactsTable() {
       render: (value) => <div className="text-gray-950">{value || "N/A"}</div>
     },
     {
-      title: "Industry",
-      field: "industry",
+      title: "Business Category",
+      field: "business_category",
       width: "w-1/6",
       render: (value) => <div className="text-gray-950">{value || "N/A"}</div>
     },
@@ -396,6 +390,13 @@ export function ContactsTable() {
     setSelectedContacts([])
   }, [pagination.page, queryValue, filterDsl])
 
+  useEffect(() => {
+    setPagination((prev) => ({
+      ...prev,
+      page: 1
+    }))
+  }, [filterDsl, debouncedQueryValue])
+
   return (
     // <Card className="h-full border-gray-200 bg-white backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950">
     <CardContent className="h-full p-0">
@@ -463,7 +464,6 @@ export function ContactsTable() {
 
       <EditColumn />
     </CardContent>
-    // </Card>
   )
 }
 

@@ -32,7 +32,8 @@ import {
   setRangeFilter,
   clearRangeFilter,
   setBucketOperator,
-  setFilterPresence
+  setFilterPresence,
+  setSearchContext
 } from "./slice/filterSlice"
 import { normalizeFilters, NormalizedFilter } from "@/features/filters/adapter/normalizeFilters"
 
@@ -96,6 +97,11 @@ export const Filters = () => {
   const appliedCount = Object.values(selectedItems).reduce((sum, items) => sum + (items?.length || 0), 0)
 
   const { currentData: filterGroups = [] } = useGetFiltersQuery()
+
+  // Keep filter search context aligned with current page (contacts vs companies)
+  useEffect(() => {
+    dispatch(setSearchContext(isPeoplePage ? "contacts" : "companies"))
+  }, [dispatch, isPeoplePage])
 
   // Normalize filters using the adapter
   const normalizedFilterGroups = useMemo(() => {
@@ -168,8 +174,7 @@ export const Filters = () => {
           const priorityMap: Record<string, number> = {
             company_name_company: 1,
             company_domain_company: 2,
-            industry: 3,
-            company_industries: 3,
+            business_category: 3,
             technologies: 4,
             company_technologies: 4,
             employee_count: 5,
@@ -179,7 +184,6 @@ export const Filters = () => {
             company_revenue_range: 6,
             annual_revenue: 7,
             founded_year: 8,
-            total_funding: 9,
             company_location: 10,
             company_headquarters: 10,
             company_country: 11,
@@ -326,6 +330,7 @@ export const Filters = () => {
                                         item: { id: value, name: value, type: "include" }
                                       })
                                     )
+                                    dispatch(setShowResults(true))
                                   }
                                 }}
                               >
@@ -347,6 +352,7 @@ export const Filters = () => {
                                             item: { id: val, name: val, type: "include" }
                                           })
                                         )
+                                        dispatch(setShowResults(true))
                                       }
                                     }
                                   }}
@@ -411,7 +417,7 @@ export const Filters = () => {
                                     </div>
                                   )}
 
-                                  {filter.id === "industry" && (
+                                  {filter.id === "business_category" && (
                                     <div className="flex items-center gap-2">
                                       <Select
                                         value={(af[key]?.presence as "any" | "known" | "unknown") || "any"}
@@ -566,9 +572,11 @@ export const Filters = () => {
                                                   item: { ...item, type: "exclude" }
                                                 })
                                               )
+                                              dispatch(setShowResults(true))
                                             }}
                                             onRemove={(item) => {
                                               dispatch(removeSelectedItem({ sectionId: filter.id, itemId: item.id }))
+                                              dispatch(setShowResults(true))
                                             }}
                                           />
                                         </div>

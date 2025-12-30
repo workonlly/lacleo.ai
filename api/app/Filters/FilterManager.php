@@ -57,7 +57,7 @@ class FilterManager
                 'settings' => [
                     'fields' => $config['fields'],
                     'search_fields' => $config['search']['suggest_fields'] ?? [],
-                    'target_model' => in_array('contact', $config['applies_to']) ? \App\Models\Contact::class : \App\Models\Company::class,
+                    'target_model' => in_array('company', $config['applies_to']) ? \App\Models\Company::class : (in_array('contact', $config['applies_to']) ? \App\Models\Contact::class : \App\Models\Company::class),
                 ],
                 'sort_order' => $config['sort_order'],
                 'is_active' => $config['active'],

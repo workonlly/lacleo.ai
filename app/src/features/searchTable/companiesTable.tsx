@@ -15,6 +15,7 @@ import { DataTableColumn } from "@/interface/searchTable/components"
 import { CompanyAttributes, ContactAttributes, SearchApiResponse } from "@/interface/searchTable/search"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useLocation } from "react-router-dom"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filterSlice"
 import { setLastResultCount, selectSemanticQuery, startSearch, selectShowResults, setSearchQueryOnly } from "../aisearch/slice/searchslice"
@@ -46,6 +47,9 @@ const CompanyNameCell = ({ row }: { row: CompanyAttributes }) => {
 }
 
 export function CompaniesTable() {
+  const location = useLocation()
+  const navState = (location.state as { fromAi?: boolean } | null) || null
+  const fromAi = Boolean(navState?.fromAi)
   useDocumentTitle("Search Companies")
   const dispatch = useAppDispatch()
   const columnsConfigFromStore = useAppSelector((s) => s.columns.configs.company)
@@ -149,13 +153,23 @@ export function CompaniesTable() {
   }, [searchParams, queryParams])
 
   const showResults = useAppSelector(selectShowResults)
+  const hasValidSearchTerm = debouncedQueryValue && debouncedQueryValue.length >= 2
+  const dslReady = useMemo(() => Boolean(filterDsl && (filterDsl.company || filterDsl.contact)), [filterDsl])
+
   const { data, isLoading, isFetching } = useSearchContactsQuery(
     { type: "company", buildParams: searchUrl },
     {
       refetchOnMountOrArgChange: true,
-      skip: !showResults
+      skip: fromAi ? !dslReady : false
     }
   )
+
+  useEffect(() => {
+    setPagination((prev) => ({
+      ...prev,
+      page: 1
+    }))
+  }, [filterDsl, debouncedQueryValue])
 
   // Derive company_phone for selected companies from the search response
   const companyData = useMemo(() => {
@@ -255,10 +269,21 @@ export function CompaniesTable() {
       }
     },
     {
+      title: "Business Category",
+      field: "business_category",
+      width: "w-1/6",
+      render: (value: unknown) => <div className="text-gray-950">{(value as string) || "N/A"}</div>
+    },
+    {
       title: "Industry",
       field: "industry",
       width: "w-1/6",
-      render: (value) => <div className="text-gray-950">{value || "N/A"}</div>
+      render: (_value, row) => {
+        const bc = row.business_category
+        const industry = row.industry
+        const bcText = Array.isArray(bc) ? bc.join(", ") : (bc as string | null) || null
+        return <div className="text-gray-950">{bcText || industry || "N/A"}</div>
+      }
     },
     {
       title: "Description",

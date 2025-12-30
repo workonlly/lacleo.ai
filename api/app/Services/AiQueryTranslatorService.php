@@ -126,7 +126,7 @@ class AiQueryTranslatorService
             'states' => [],
             'cities' => [],
         ];
-        if (preg_match('/\b(?:in|from|based in|located in)\s+([A-Z][a-zA-Z]+(?:[\s,]+[A-Z][a-zA-Z]+)*)\b/', $query, $matches)) {
+        if (preg_match('/\b(?:in|from|based in|located in)\s+([a-zA-Z][a-zA-Z\s,]+)\b/i', $query, $matches)) {
             $raw = trim($matches[1]);
             $parts = array_values(array_filter(array_map('trim', preg_split('/[,]|\band\b/i', $raw))));
             if (count($parts) === 1) {
@@ -232,13 +232,13 @@ EOT;
         }
 
         // Ollama API Call (fail fast and respect app timeout)
-        $timeout = (int) env('AI_TRANSLATE_TIMEOUT', 15);
+        $timeout = (int) env('AI_TRANSLATE_TIMEOUT', 30);
         if ($timeout <= 0) {
-            $timeout = 15;
+            $timeout = 30;
         }
         
         $response = Http::timeout($timeout)
-            ->connectTimeout(min(3, $timeout))
+            ->connectTimeout(min(10, $timeout))
             ->post(rtrim((string) $baseUrl, '/') . '/api/chat', [
                 'model' => $model,
                 'messages' => $apiMessages,
@@ -246,6 +246,8 @@ EOT;
                 'format' => 'json',
                 'options' => [
                     'temperature' => 0,
+                    // keep model loaded to avoid unload delays/timeouts
+                    'keep_alive' => env('OLLAMA_KEEP_ALIVE', '10m'),
                 ]
             ]);
 
@@ -254,14 +256,18 @@ EOT;
         }
 
         $content = $response->json('message.content');
-        $data = json_decode($content, true);
+        $data = is_string($content) ? json_decode($content, true) : null;
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            // Attempt simplistic extraction
-            if (preg_match('/\{.*\}/s', $content, $matches)) {
+        if (!$data || json_last_error() !== JSON_ERROR_NONE) {
+            $raw = $response->body();
+            $parsed = json_decode($raw, true);
+            if (is_array($parsed) && isset($parsed['message']['content']) && is_string($parsed['message']['content'])) {
+                $data = json_decode($parsed['message']['content'], true);
+            }
+            if ((!$data || json_last_error() !== JSON_ERROR_NONE) && preg_match('/\{.*\}/s', is_string($content) ? $content : $raw, $matches)) {
                 $data = json_decode($matches[0], true);
             }
-            if (!$data) {
+            if (!$data || json_last_error() !== JSON_ERROR_NONE) {
                 throw new \Exception('Invalid JSON from AI: ' . json_last_error_msg());
             }
         }
@@ -359,6 +365,24 @@ EOT;
             }
         }
 
+        // Parse revenue hints from query and inject as company.annual_revenue.range
+        $minRevenue = $this->parseRevenueMin($query);
+        if ($minRevenue !== null) {
+            if (!isset($result['filters']['company']['annual_revenue']) || !is_array($result['filters']['company']['annual_revenue'])) {
+                $result['filters']['company']['annual_revenue'] = [];
+            }
+            $existingRange = (array) ($result['filters']['company']['annual_revenue']['range'] ?? []);
+            $existingRange['min'] = $existingRange['min'] ?? $minRevenue;
+            $result['filters']['company']['annual_revenue']['range'] = $existingRange;
+        }
+
+        // Parse technology keywords (e.g., Selenium) and inject as company.technologies.include
+        $techs = $this->parseTechnologies($query);
+        if (!empty($techs)) {
+            $existing = (array) ($result['filters']['company']['technologies']['include'] ?? []);
+            $result['filters']['company']['technologies']['include'] = array_values(array_unique(array_merge($existing, $techs)));
+        }
+
         return $result;
     }
 
@@ -413,30 +437,92 @@ EOT;
     }
 
     /**
+     * Parse minimum revenue from free text (supports K/M/B and words)
+     */
+    private function parseRevenueMin(string $text): ?int
+    {
+        $t = strtolower($text);
+        // Patterns: $20M, 20M, 20 million, 20000000
+        if (preg_match('/\$?\s*(\d{1,3}(?:[,\.]\d{3})*|\d+(?:\.\d+)?)\s*(b|m|k|million|billion|thousand)?/i', $t, $m)) {
+            $numStr = str_replace([','], '', $m[1]);
+            $num = (float) $numStr;
+            $unit = strtolower($m[2] ?? '');
+            $mult = 1;
+            if ($unit === 'k' || $unit === 'thousand') $mult = 1_000;
+            elseif ($unit === 'm' || $unit === 'million') $mult = 1_000_000;
+            elseif ($unit === 'b' || $unit === 'billion') $mult = 1_000_000_000;
+            $val = (int) round($num * $mult);
+            if ($val > 0) return $val;
+        }
+        return null;
+    }
+
+    /**
+     * Parse simple technology tokens from text
+     */
+    private function parseTechnologies(string $text): array
+    {
+        $out = [];
+        if (preg_match('/\bselenium\b/i', $text)) {
+            $out[] = 'Selenium';
+        }
+        return $out;
+    }
+
+    /**
      * Build rule-based response when AI is unavailable
      */
     private function buildRuleBasedResponse(string $query, array $preAnalysis): array
     {
         $filters = ['contact' => [], 'company' => []];
-        
-        // Add job titles if detected
+
+        // Job titles
         if (!empty($preAnalysis['job_titles'])) {
             $bestJobTitle = $this->selectLongestJobTitle($preAnalysis['job_titles']);
-            $filters['contact']['job_title'] = ['include' => [$bestJobTitle]];
+            $filters['contact']['job_title'] = ['include' => [\Illuminate\Support\Str::title($bestJobTitle)]];
         }
-        
-        // Add company names if detected
+
+        // Company names/domains
         if (!empty($preAnalysis['company_names'])) {
-            $filters['company']['company_names'] = ['include' => $preAnalysis['company_names']];
+            $filters['company']['company_names'] = ['include' => array_map(fn($n) => \Illuminate\Support\Str::title((string) $n), $preAnalysis['company_names'])];
         }
-        
-        // If no specific filters detected, use query as keyword search
+        if (!empty($preAnalysis['company_domains'])) {
+            $filters['company']['company_domain'] = ['include' => array_values(array_unique($preAnalysis['company_domains']))];
+        }
+
+        // Technologies (e.g., Selenium)
+        $techs = $this->parseTechnologies($query);
+        if (!empty($techs)) {
+            $filters['company']['technologies'] = ['include' => $techs];
+        }
+
+        // Revenue minimum
+        $minRevenue = $this->parseRevenueMin($query);
+        if ($minRevenue !== null) {
+            $filters['company']['annual_revenue'] = [
+                'range' => ['min' => $minRevenue]
+            ];
+        }
+
+        // Locations heuristics into contact bucket (safer default)
+        $loc = $preAnalysis['locations'] ?? ['countries' => [], 'states' => [], 'cities' => []];
+        $hasAnyLoc = (is_array($loc['countries']) && count($loc['countries']) > 0) || (is_array($loc['states']) && count($loc['states']) > 0) || (is_array($loc['cities']) && count($loc['cities']) > 0);
+        if ($hasAnyLoc) {
+            if (!empty($loc['countries'])) $filters['contact']['countries'] = ['include' => array_map(fn($c) => \Illuminate\Support\Str::title((string) $c), array_values(array_unique($loc['countries'])) )];
+            if (!empty($loc['states'])) $filters['contact']['states'] = ['include' => array_map(fn($s) => \Illuminate\Support\Str::title((string) $s), array_values(array_unique($loc['states'])) )];
+            if (!empty($loc['cities'])) $filters['contact']['cities'] = ['include' => array_map(fn($ci) => \Illuminate\Support\Str::title((string) $ci), array_values(array_unique($loc['cities'])) )];
+        }
+
+        // If no specific filters detected, use keywords under companies
         if (empty($filters['contact']) && empty($filters['company'])) {
             $filters['company']['company_keywords'] = ['include' => [$query]];
         }
-        
+
+        // Determine entity based on filters
+        $entity = DslValidator::detectEntity(['contact' => $filters['contact'], 'company' => $filters['company']]);
+
         return [
-            'entity' => $preAnalysis['entity'],
+            'entity' => $entity,
             'filters' => $filters,
             'summary' => 'AI assistance is temporarily unavailable. Filters have been applied automatically. You can refine them manually.',
             'semantic_query' => null,
@@ -445,32 +531,5 @@ EOT;
         ];
     }
 
-    /**
-     * Apply safety logic to ensure minimum filter requirements (legacy method, now handled by DslValidator)
-     */
-    private function applySafetyLogic(array $result, string $query): array
-    {
-        if (!isset($result['filters']) || !is_array($result['filters'])) {
-            $result['filters'] = ['contact' => [], 'company' => []];
-        }
-        if (!isset($result['filters']['contact']) || !is_array($result['filters']['contact'])) {
-            $result['filters']['contact'] = [];
-        }
-        if (!isset($result['filters']['company']) || !is_array($result['filters']['company'])) {
-            $result['filters']['company'] = [];
-        }
-        if (!isset($result['entity'])) {
-            $result['entity'] = 'contacts';
-        }
-        return $result;
-    }
-
-    /**
-     * Get fallback response when AI service fails (legacy method)
-     */
-    private function getFallbackResponse(string $query): array
-    {
-        $preAnalysis = $this->analyzeQueryDeterministically($query);
-        return $this->buildRuleBasedResponse($query, $preAnalysis);
-    }
+    //
 }

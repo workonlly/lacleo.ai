@@ -27,43 +27,9 @@ class AiSearchController extends Controller
             // 1. Get the query from the user
             $incomingQuery = (string) ($request->input('query') ?? $request->input('prompt') ?? '');
 
-            // 2. Prepare the "Dictionary" from your FilterRegistry
-            // This tells the AI exactly what names to use (e.g., company_city instead of 'city')
-            $registryFilters = FilterRegistry::getFilters();
-            $filterGuidelines = collect($registryFilters)->map(function($f) {
-                $applies = isset($f['applies_to']) && is_array($f['applies_to']) ? implode(',', $f['applies_to']) : 'unknown';
-                return "- ID: {$f['id']} | Label: {$f['label']} | Applies To: {$applies}";
-            })->implode("\n");
-
-            // 3. Build the Instructions
-            $instruction = "You are a lead generation assistant. Convert the user's query into Canonical DSL JSON.
-            AVAILABLE FILTER IDS (from registry):
-            {$filterGuidelines}
-
-            Canonical DSL shape:
-            {
-              \"entity\": \"contacts\" | \"companies\",
-              \"filters\": {
-                \"contact\": { FILTER_ID: { include: [values], exclude?: [values], range?: { min?: number, max?: number } } },
-                \"company\": { FILTER_ID: { include: [values], exclude?: [values], range?: { min?: number, max?: number } } }
-              },
-              \"summary\": \"short explanation\",
-              \"semantic_query\": null | \"optional vector sentence\",
-              \"custom\": []
-            }
-
-            Routing rules:
-            - job_title and other person attributes ALWAYS go under filters.contact.
-            - company_name, company_domain, industry, technologies, employee_count, annual_revenue, founded_year go under filters.company.
-            - NEVER put job_title under filters.company.
-            - When multiple job titles are present, keep the longest/specific ones (e.g., 'AI Engineer' over 'Engineer').
-            - If job title detected, entity = contacts; else if only company metrics detected, entity = companies; else default entity = contacts.
-
-            Output ONLY valid JSON in the Canonical DSL shape.";
-
-            // 4. Mimic your original structure to avoid 500 errors
+            // Build conversation: only the raw user query; system instructions are injected by the service
             $messages = [
-                ['role' => 'user', 'content' => $instruction . "\n\nUser Query: " . $incomingQuery]
+                ['role' => 'user', 'content' => (string) $incomingQuery]
             ];
 
             // 5. Call the service (Your original method call)
@@ -72,7 +38,7 @@ class AiSearchController extends Controller
                 $request->input('context') ?? []
             );
 
-            // 6. Ensure Canonical DSL buckets exist
+            // Ensure Canonical DSL buckets exist
             if (!isset($result['filters']) || !is_array($result['filters'])) {
                 $result['filters'] = ['contact' => [], 'company' => []];
             }
@@ -136,7 +102,7 @@ class AiSearchController extends Controller
 
             // Fallback: derive location from raw query if missing
             if (!isset($flat['location']) && is_string($incomingQuery)) {
-                if (preg_match('/\b(?:in|from|based in|located in)\s+([A-Z][a-zA-Z]+(?:[\s,]+[A-Z][a-zA-Z]+)*)\b/', $incomingQuery, $m)) {
+                if (preg_match('/\b(?:in|from|based in|located in)\s+([a-zA-Z][a-zA-Z\s,]+)\b/i', $incomingQuery, $m)) {
                     $raw = trim($m[1]);
                     $parts = array_values(array_filter(array_map('trim', preg_split('/[,]|\band\b/i', $raw))));
                     $countries = [];
@@ -160,9 +126,51 @@ class AiSearchController extends Controller
                 }
             }
 
+            // Ensure location includes tokens from query even if partially present
+            if (is_string($incomingQuery)) {
+                if (preg_match('/\b(?:in|from|based in|located in)\s+([a-zA-Z][a-zA-Z\s,]+)\b/i', $incomingQuery, $m2)) {
+                    $raw2 = trim($m2[1]);
+                    $parts2 = array_values(array_filter(array_map('trim', preg_split('/[,]|\band\b/i', $raw2))));
+                    $countries2 = [];
+                    $cities2 = [];
+                    if (count($parts2) === 1) {
+                        $countries2[] = $parts2[0];
+                    } elseif (count($parts2) >= 2) {
+                        $countries2[] = end($parts2);
+                        array_pop($parts2);
+                        foreach ($parts2 as $ci2) { $cities2[] = $ci2; }
+                    }
+                    if (!isset($flat['location'])) {
+                        $flat['location'] = [ 'include' => [ 'countries' => [], 'states' => [], 'cities' => [] ] ];
+                    }
+                    $flat['location']['include']['countries'] = array_values(array_unique(array_merge($flat['location']['include']['countries'], array_map(fn($c) => ucfirst(strtolower($c)), $countries2))));
+                    $flat['location']['include']['cities'] = array_values(array_unique(array_merge($flat['location']['include']['cities'], array_map(fn($c) => ucfirst(strtolower($c)), $cities2))));
+                }
+            }
+
             // Company domain
             if (isset($company['company_domain'])) {
                 $flat['company_domain'] = is_array($company['company_domain']) ? $company['company_domain'] : ['include' => [(string) $company['company_domain']]];
+            }
+
+            // Company names (normalized to company_name)
+            if (isset($company['company_name'])) {
+                $flat['company_name'] = is_array($company['company_name']) ? $company['company_name'] : ['include' => [(string) $company['company_name']]];
+            }
+
+            // Technologies
+            if (isset($company['technologies'])) {
+                $flat['technologies'] = is_array($company['technologies']) ? $company['technologies'] : ['include' => [(string) $company['technologies']]];
+            }
+
+            // Employee count
+            if (isset($company['employee_count'])) {
+                $flat['employee_count'] = is_array($company['employee_count']) ? $company['employee_count'] : ['range' => (array) $company['employee_count']];
+            }
+
+            // Annual revenue
+            if (isset($company['annual_revenue'])) {
+                $flat['annual_revenue'] = is_array($company['annual_revenue']) ? $company['annual_revenue'] : ['range' => (array) $company['annual_revenue']];
             }
 
             // 9. Return legacy shape for app compatibility
@@ -172,19 +180,43 @@ class AiSearchController extends Controller
                 'summary' => $result['summary'] ?? '',
                 'semantic_query' => $result['semantic_query'] ?? null,
                 'custom' => $result['custom'] ?? [],
+                'fallback_mode' => $result['fallback_mode'] ?? false,
             ], 200);
 
         } catch (\Throwable $e) {
-            // Log the error so you can see exactly what went wrong in storage/logs/laravel.log
             Log::error("AI Search Error: " . $e->getMessage());
+
+            $fallbackEntity = 'contacts';
+            $q = $incomingQuery;
+            $qLower = strtolower($q);
+            if (preg_match('/\b(company|companies|revenue|employees|industry|technologies|founded|domain)\b/', $qLower)) {
+                $fallbackEntity = 'companies';
+            }
+
+            $fallbackFilters = ['contact' => [], 'company' => []];
+            if ($fallbackEntity === 'companies') {
+                $fallbackFilters['company']['company_keywords'] = ['include' => [$q]];
+                if (preg_match('/\$?\s*(\d[\d,\.]*)\s*(m|million|b|billion|k|thousand)/i', $qLower, $m)) {
+                    $numStr = str_replace([','], '', $m[1]);
+                    $num = (float) $numStr;
+                    $unit = strtolower($m[2] ?? '');
+                    $mult = $unit === 'k' || $unit === 'thousand' ? 1000 : ($unit === 'm' || $unit === 'million' ? 1000000 : 1000000000);
+                    $min = (int) round($num * $mult);
+                    if ($min > 0) {
+                        $fallbackFilters['company']['annual_revenue'] = ['range' => ['min' => $min]];
+                    }
+                }
+            } else {
+                $fallbackFilters['contact']['job_title'] = ['include' => [$q]];
+            }
 
             return response()->json([
                 'status' => 'failed',
-                'entity' => 'contacts',
-                'filters' => ['contact' => [], 'company' => []],
-                'summary' => 'The AI is having trouble. Please try a simpler search.',
+                'entity' => $fallbackEntity,
+                'filters' => $fallbackFilters,
+                'summary' => 'The AI is having trouble. A context-aware fallback has been applied.',
                 'error_code' => 'AI_INTERNAL_ERROR'
-            ], 200); // We return 200 so the frontend doesn't crash
+            ], 200);
         }
     }
 }

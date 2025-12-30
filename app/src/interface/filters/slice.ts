@@ -10,8 +10,9 @@ export interface ActiveFilter {
   include: string[]
   exclude: string[]
   ranges?: RangeFilterValue[]
+  range?: RangeFilterValue
   operator?: "or" | "and" // Legacy operator for simple lists
-  presence?: "any" | "known" | "unknown" // For Industry
+  presence?: "any" | "known" | "unknown" // For Business Category
   mode?: "all" | "any" // For Keywords (and future use)
   fields?: string[] // For Keywords (e.g. ['name', 'description'])
 }

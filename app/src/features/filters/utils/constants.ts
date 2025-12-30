@@ -3,7 +3,6 @@ export const FILTER_KEYS = {
   JOB_TITLE: "job_title",
   DEPARTMENTS: "departments",
   SENIORITY: "seniority",
-  EXPERIENCE: "years_of_experience",
   CONTACT_LOCATION: "location",
   CONTACT_CITY: "city",
   CONTACT_STATE: "state",
@@ -13,7 +12,7 @@ export const FILTER_KEYS = {
   COMPANY_NAME: "company_names",
   EMPLOYEE_COUNT: "employee_count",
   REVENUE: "annual_revenue", // Normalized from 'revenue'
-  INDUSTRY: "industry", // or 'industries'
+  BUSINESS_CATEGORY: "business_category",
   TECHNOLOGIES: "technologies",
   COMPANY_KEYWORDS: "company_keywords",
   COMPANY_LOCATION: "company_location", // if distinct from contact location in response structure
@@ -26,12 +25,11 @@ export const FILTER_LABELS: Record<string, string> = {
   [FILTER_KEYS.JOB_TITLE]: "Job Title",
   [FILTER_KEYS.DEPARTMENTS]: "Department",
   [FILTER_KEYS.SENIORITY]: "Seniority",
-  [FILTER_KEYS.EXPERIENCE]: "Experience",
   [FILTER_KEYS.CONTACT_LOCATION]: "Location",
   [FILTER_KEYS.COMPANY_NAME]: "Company",
   [FILTER_KEYS.EMPLOYEE_COUNT]: "Company Size",
   [FILTER_KEYS.REVENUE]: "Revenue",
-  [FILTER_KEYS.INDUSTRY]: "Industry",
+  [FILTER_KEYS.BUSINESS_CATEGORY]: "Business Category",
   [FILTER_KEYS.TECHNOLOGIES]: "Technologies",
   [FILTER_KEYS.COMPANY_KEYWORDS]: "Keywords"
 }

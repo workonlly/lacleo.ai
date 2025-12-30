@@ -197,7 +197,7 @@ const ContactDetails = () => {
   const headcount =
     currentCompany?.number_of_employees || currentCompany?.company_headcount || (currentCompany as { employee_count?: number })?.employee_count
   const headcountDisplay = headcount ? headcount.toLocaleString() : "N/A"
-  const industryDisplay = currentCompany?.industry || (currentCompany as { business_category?: string })?.business_category || "N/A"
+  const businessCategoryDisplay = currentCompany?.business_category || (currentCompany as { business_category?: string })?.business_category || "N/A"
   const revenueDisplay = formatRevenue(currentCompany?.annual_revenue_usd || currentCompany?.revenue)
   const foundedYearDisplay = currentCompany?.founded_year ? String(currentCompany.founded_year) : "N/A"
 
@@ -258,7 +258,7 @@ const ContactDetails = () => {
 
     const parts = []
     if (currentCompany?.company) parts.push(currentCompany.company)
-    if (industryDisplay !== "N/A") parts.push(`operates in ${industryDisplay}`)
+    if (businessCategoryDisplay !== "N/A") parts.push(`operates in ${businessCategoryDisplay}`)
     if (companyCountry) parts.push(`based in ${companyCountry}`)
     if (headcountDisplay !== "N/A") parts.push(`with ${headcountDisplay} employees`)
     if (specialties.length > 0) parts.push(`specializing in ${specialties.slice(0, 3).join(", ")}`)
@@ -758,7 +758,7 @@ const ContactDetails = () => {
 
                   <div className="flex flex-wrap gap-3">
                     {headcountDisplay !== "N/A" && <MetricBadge icon={<Users className="size-4" />} label="Employees" value={headcountDisplay} />}
-                    {industryDisplay !== "N/A" && <MetricBadge icon={<Briefcase className="size-4" />} label="Industry" value={industryDisplay} />}
+                    {/* {businessCategoryDisplay !== "N/A" && <MetricBadge icon={<Briefcase className="size-4" />} label="Business Category" value={businessCategoryDisplay} />} */}
                     {revenueDisplay !== "N/A" && <MetricBadge icon={<DollarSign className="size-4" />} label="Revenue" value={revenueDisplay} />}
                     {foundedYearDisplay !== "N/A" && (
                       <MetricBadge icon={<Calendar className="size-4" />} label="Founded" value={foundedYearDisplay} />
@@ -889,7 +889,7 @@ const ContactDetails = () => {
 
                 <div className="space-y-3">
                   {!!company.company && <InfoRow label="Company Name" value={company.company} />}
-                  {industryDisplay !== "N/A" && <InfoRow label="Industry" value={industryDisplay} icon={<Briefcase className="size-4" />} />}
+                  {/* {businessCategoryDisplay !== "N/A" && <InfoRow label="Business Category" value={businessCategoryDisplay} icon={<Briefcase className="size-4" />} />} */}
                   {headcountDisplay !== "N/A" && <InfoRow label="Employees" value={headcountDisplay} icon={<Users className="size-4" />} />}
                   {revenueDisplay !== "N/A" && <InfoRow label="Annual Revenue" value={revenueDisplay} icon={<DollarSign className="size-4" />} />}
                   {foundedYearDisplay !== "N/A" && <InfoRow label="Founded Year" value={foundedYearDisplay} icon={<Calendar className="size-4" />} />}

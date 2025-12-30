@@ -12,7 +12,8 @@ export interface ContactAttributes {
   personal_email?: string
   phone_number?: string
   mobile_phone?: string
-  industry?: string
+  industry?: string | null
+  business_category?: string | string[] | null
   company_headcount?: number | null
   employee_count?: number | null
   number_of_employees?: number | null
@@ -56,7 +57,8 @@ export interface CompanyAttributes {
   linkedin_url?: string | null
   facebook_url?: string | null
   twitter_url?: string | null
-  industry: string
+  industry?: string | null
+  business_category?: string | string[] | null
   keywords: string[]
   technologies?: string[]
   company_technologies?: string[]
@@ -87,8 +89,6 @@ export interface CompanyAttributes {
   postal_code?: string | null
   country?: string | null
   funding?: {
-    latest_funding?: number | string | null
-    total_funding?: number | string | null
     last_raised_at?: string | null
   }
   social_media?: {

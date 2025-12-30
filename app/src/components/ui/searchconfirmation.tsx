@@ -64,19 +64,20 @@ const SearchConfirmation: React.FC<SearchConfirmationProps> = ({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-row items-center gap-[10px]">
-        {/* Apply Button */}
-        <Avatar className="">
-          <LacleoIcon className=" transition-all duration-500 ease-in-out dark:invert" />
-        </Avatar>
-        <Button
-          onClick={handleApply}
-          disabled={disabled}
-          className="w-full max-w-28 rounded-[10px] border border-blue-500 bg-transparent p-[10px] text-base text-blue-500 hover:bg-transparent"
-        >
-          {applyButtonText}
-        </Button>
-      </div>
+      {!!applyButtonText && (
+        <div className="mt-4 flex flex-row items-center gap-[10px]">
+          <Avatar className="">
+            <LacleoIcon className=" transition-all duration-500 ease-in-out dark:invert" />
+          </Avatar>
+          <Button
+            onClick={handleApply}
+            disabled={disabled}
+            className="w-full max-w-28 rounded-[10px] border border-blue-500 bg-transparent p-[10px] text-base text-blue-500 hover:bg-transparent"
+          >
+            {applyButtonText}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

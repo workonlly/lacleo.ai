@@ -20,7 +20,6 @@ export const sectionToKey: Record<string, string> = {
   job_title: "job_title",
   departments: "departments", // specific to backend expectations if needed, but registry uses department? Validator maps department -> departments.
   seniority: "seniority",
-  years_of_experience: "experience_years",
   contact_country: "countries",
   contact_state: "states",
   contact_city: "cities",
@@ -30,21 +29,18 @@ export const sectionToKey: Record<string, string> = {
   company_technologies_contact: "technologies",
   annual_revenue_contact: "annual_revenue",
   founded_year_contact: "founded_year",
-  total_funding_contact: "total_funding",
   employee_count_contact: "employee_count",
 
   // Company filters (use FilterRegistry IDs)
   company_employee_count: "employee_count",
   employee_count: "employee_count",
-  company_revenue_range: "annual_revenue",
   company_revenue: "annual_revenue",
+  company_revenue_range: "annual_revenue",
   annual_revenue: "annual_revenue",
-  founded_year: "founded_year",
-  total_funding: "total_funding",
-  company_industries: "industry",
-  industry: "industry",
-  company_technologies: "technologies",
   technologies: "technologies",
+  founded_year: "founded_year",
+  business_category: "business_category",
+  company_technologies: "technologies",
   company_country: "countries",
   company_state: "states",
   company_city: "cities",
@@ -54,14 +50,17 @@ export const sectionToKey: Record<string, string> = {
   company_domain_contact: "company_domain",
   company_name_company: "company_name",
   company_name_contact: "company_name",
-  company_has_email: "company_phone_exists",
   company_has_phone: "company_phone_exists",
-  company_keywords: "company_keywords"
+  company_keywords: "keywords",
+  company_names: "company_name"
 }
 
 function resolveBucket(state: FilterState, sectionId: string): "company" | "contact" {
+  const key = sectionToKey[sectionId] || sectionId
+  // These keys MUST always go to the contact bucket regardless of page
+  const contactKeys = ["job_title", "departments", "seniority"]
   if (state.searchContext === "companies") return "company"
-  return sectionId.startsWith("contact_") ? "contact" : "company"
+  return contactKeys.includes(key) ? "contact" : "company"
 }
 
 function updateActiveFilters(
@@ -79,11 +78,15 @@ function updateActiveFilters(
   // Range
   const rv = item.value as RangeFilterValue | undefined
   if (rv && (rv.min !== undefined || rv.max !== undefined)) {
+    bucket[key] = {
+      ...bucket[key],
+      range: { min: rv.min, max: rv.max }
+    }
     return
   }
 
-  // Presence toggles
-  if (sectionId.endsWith("_has_email") || sectionId.endsWith("_has_phone")) {
+  // Presence toggles for existence filters
+  if (sectionId.endsWith("_has_email") || sectionId.endsWith("_has_phone") || sectionId.endsWith("_exists")) {
     if (actionType === "add") {
       bucket[key].presence = item.type === "include" ? "known" : "unknown"
     } else if (actionType === "remove") {
@@ -114,7 +117,6 @@ export function getSectionIdFromKey(key: string, isCompanyFilter: boolean): stri
     job_title: "job_title",
     department: "departments",
     seniority: "seniority",
-    experience_years: "years_of_experience",
     contact_country: "contact_country",
     contact_state: "contact_state",
     contact_city: "contact_city",
@@ -126,15 +128,14 @@ export function getSectionIdFromKey(key: string, isCompanyFilter: boolean): stri
     employee_count: "employee_count",
     annual_revenue: "annual_revenue",
     founded_year: "founded_year",
-    total_funding: "total_funding",
-    industry: "industry",
+    business_category: "business_category",
     technologies: "technologies",
     company_domain: isCompanyFilter ? "company_domain_company" : "company_domain_contact",
     company_name: isCompanyFilter ? "company_name_company" : "company_name_contact",
     company_country: "company_country",
     company_state: "company_state",
     company_city: "company_city",
-    company_keywords: "company_keywords"
+    keywords: "company_keywords"
   }
   return keyToSection[key] || null
 }
@@ -209,12 +210,14 @@ const filterSlice = createSlice({
         "employee_count",
         "annual_revenue",
         "founded_year",
-        "total_funding",
-        "industry",
+        "business_category",
         "technologies",
         "company_domain",
         "company_name",
         "company_phone_exists",
+        "company_linkedin_exists",
+        "company_facebook_exists",
+        "company_twitter_exists",
         "company_country",
         "company_state",
         "company_city",
@@ -269,6 +272,11 @@ const filterSlice = createSlice({
       const bucketType = resolveBucket(state, sectionId)
       const bucket = bucketType === "company" ? state.activeFilters.company : state.activeFilters.contact
       if (bucket[key]) {
+        // remove range property when clearing range selection
+        const af = bucket[key] as ActiveFilter
+        if (af.range) {
+          delete af.range
+        }
         if (!bucket[key].include?.length && !bucket[key].exclude?.length && !bucket[key].presence && !bucket[key].operator) {
           delete bucket[key]
         }

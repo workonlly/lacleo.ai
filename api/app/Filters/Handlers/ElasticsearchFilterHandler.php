@@ -58,7 +58,7 @@ class ElasticsearchFilterHandler extends AbstractFilterHandler
         $elastic = $targetModel::elastic();
 
         $settings = $this->filter->settings;
-        $fieldType = $settings['field_type'] ?? 'text';
+        $fieldType = $this->filter->type ?? ($settings['field_type'] ?? 'text');
         
         // Determine field based on target model context
         $context = ($targetModel === \App\Models\Contact::class) ? 'contact' : 'company';
@@ -171,7 +171,7 @@ class ElasticsearchFilterHandler extends AbstractFilterHandler
     protected function applyInclude(ElasticQueryBuilder $query, string $field, array $values, string $operator): void
     {
         $settings = $this->filter->settings;
-        $fieldType = $settings['field_type'] ?? 'text';
+        $fieldType = $this->filter->type ?? ($settings['field_type'] ?? 'text');
         if ($fieldType === 'keyword') {
             $query->filter(['terms' => [$field => $values]]);
             return;
@@ -193,7 +193,7 @@ class ElasticsearchFilterHandler extends AbstractFilterHandler
     protected function applyExclude(ElasticQueryBuilder $query, string $field, array $values): void
     {
         $settings = $this->filter->settings;
-        $fieldType = $settings['field_type'] ?? 'text';
+        $fieldType = $this->filter->type ?? ($settings['field_type'] ?? 'text');
         if ($fieldType === 'keyword') {
             $query->mustNot(['terms' => [$field => $values]]);
             return;

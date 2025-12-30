@@ -92,6 +92,7 @@ class Contact extends Model
     public function elasticIndex(): string
     {
         return \App\Elasticsearch\IndexResolver::contacts();
+        
     }
 
     public function elasticReadAlias(): string

@@ -327,12 +327,12 @@ class DslValidator
             }
         }
 
-        // If only company filters exist, return companies
-        if (!empty($companyFilters) && empty($contactFilters)) {
+        // Prefer companies when company filters are present unless explicit contact-only terms exist
+        if (!empty($companyFilters)) {
             return 'companies';
         }
 
-        // Default to contacts for mixed queries
+        // Default
         return 'contacts';
     }
 }

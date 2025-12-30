@@ -1,5 +1,5 @@
 // features/filters/hooks/useFilterSearch.ts
-import { useLazySearchFilterValuesQuery } from "@/features/filters/slice/apiSlice"
+import { useLazySearchFilterValuesQuery, useLazyCompaniesSuggestQuery } from "@/features/filters/slice/apiSlice"
 import { sectionToKey } from "@/features/filters/slice/filterSlice"
 import { IFilter } from "@/interface/filters/filterGroup"
 import { IFilterSearchState } from "@/interface/filters/filterValueSearch"
@@ -14,6 +14,7 @@ export const useFilterSearch = () => {
   })
 
   const [triggerSearch] = useLazySearchFilterValuesQuery()
+  const [triggerCompaniesSuggest] = useLazyCompaniesSuggestQuery()
 
   const handleSearch = useCallback(
     async (filter: IFilter, query: string = "", page: string = "1") => {
@@ -28,21 +29,41 @@ export const useFilterSearch = () => {
       }))
 
       try {
-        // Map frontend ID to backend expected key
-        const apiFilterId = sectionToKey[filterId] || filterId
+        // Special suggestion source for company name/domain
+        const isCompanyName = filter.id === "company_name"
+        const isCompanyDomain = filter.id === "company_domain"
 
-        const response = await triggerSearch({
-          filter: apiFilterId,
-          page,
-          count: "10",
-          ...(query && { q: query })
-        }).unwrap()
+        let response:
+          | { data: Array<{ id: string | null; name: string | null }>; metadata?: IFilterSearchState["metadata"][string] }
+          | { data: Array<{ id: string | null; name: string | null }>; metadata: IFilterSearchState["metadata"][string] }
 
+        if ((isCompanyName || isCompanyDomain) && query) {
+          const suggest = await triggerCompaniesSuggest({ q: query }).unwrap()
+          const mapped = (suggest.data || []).map((s) => ({ id: String(s.name ?? s.domain ?? ""), name: String(s.name ?? s.domain ?? "") }))
+          response = {
+            data: mapped,
+            metadata: {
+              total_count: mapped.length,
+              returned_count: mapped.length,
+              page: Number(page),
+              per_page: 10,
+              total_pages: 1
+            }
+          }
+        } else {
+          // Use server-provided filter ID directly for value lookup
+          response = await triggerSearch({
+            filter: filterId,
+            page,
+            count: "10",
+            ...(query && { q: query })
+          }).unwrap()
+        }
         setSearchState((prev) => ({
           ...prev,
           results: {
             ...prev.results,
-            [filterId]: response.data
+            [filterId]: response.data as Array<{ id: string; name: string }>
           },
           metadata: {
             ...prev.metadata,
@@ -58,7 +79,7 @@ export const useFilterSearch = () => {
         }))
       }
     },
-    [triggerSearch]
+    [triggerSearch, triggerCompaniesSuggest]
   )
 
   const clearSearchResults = useCallback((filterId: string) => {

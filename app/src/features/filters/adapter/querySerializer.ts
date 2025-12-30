@@ -69,13 +69,13 @@ export function serializeToDSL(
       bucket.presence = af.presence
     }
 
-    // Include/Exclude values (prefer internal id/token, fallback to name)
+    // Include/Exclude values (prefer explicit value, fallback to name, then id)
     const presenceActive = bucket.presence === "known" || bucket.presence === "unknown"
     if (!presenceActive) {
       const incVals = includeItems
         .filter((i) => !((i.value as RangeFilterValue | undefined)?.min || (i.value as RangeFilterValue | undefined)?.max))
-        .map((i) => String(i.id ?? i.name))
-      const excVals = excludeItems.map((i) => String(i.id ?? i.name))
+        .map((i) => String((i.value as string | undefined) ?? i.name ?? i.id))
+      const excVals = excludeItems.map((i) => String((i.value as string | undefined) ?? i.name ?? i.id))
       if (incVals.length) bucket.include = incVals
       if (excVals.length) bucket.exclude = excVals
     }

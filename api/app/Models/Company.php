@@ -16,12 +16,10 @@ class Company extends Model
         'id',
         'website',
         'company',
-        'companyAlsoKnownAs',
         'companyLinkedinUrl',
         'companyEmail',
         'companyPhone',
         'employees',
-        'industry',
         'keywords',
         'businessCategory',
         'serviceProduct',
@@ -116,6 +114,11 @@ class Company extends Model
     public function elasticIndex(): string
     {
         return \App\Elasticsearch\IndexResolver::companies();
+    }
+
+    public function elasticReadAlias(): string
+    {
+        return $this->elasticIndex();
     }
 
     /**
@@ -290,7 +293,6 @@ class Company extends Model
                 'website' => 7,
                 'company_linkedin_url' => 7,
                 'business_category' => 6,
-                'industry' => 6,
                 'keywords' => 5,
             ],
             'phrase_fields' => [

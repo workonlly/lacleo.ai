@@ -349,7 +349,7 @@ class SearchService
         $items = array_map(function ($item) use ($type) {
             $attributes = $item;
             if (isset($attributes['company'])) {
-                $attributes['industry'] = $attributes['industry'] ?? ($attributes['business_category'] ?? null);
+                $attributes['business_category'] = $attributes['company_business_category'] ?? ($attributes['business_category'] ?? null);
             }
             // Normalize employee counts for frontend visibility
             if (isset($attributes['employee_count'])) {
@@ -885,9 +885,9 @@ class SearchService
             'company_revenue' => 'annual_revenue',
             'revenue' => 'annual_revenue',
             'annual_revenue' => 'annual_revenue',
-            'company_industries' => 'business_category',
-            'industry' => 'business_category',
-            'industries' => 'business_category',
+            'company_business_category' => 'business_category',
+            'business_category' => 'business_category',
+            'businessCategories' => 'business_category',
             'company_technologies' => 'company_technologies',
             'technologies' => 'company_technologies',
             'company_locations' => 'location',
@@ -1013,23 +1013,21 @@ class SearchService
                     }
                     break;
 
-                case 'industries':
+                case 'businessCategory':
                     if (is_array($value)) {
                         $include = $value['include'] ?? [];
                         $exclude = $value['exclude'] ?? [];
 
                         if (!empty($include)) {
                             $should = [];
-                            $should[] = ['terms' => ['industry' => $include]];
-                            $should[] = ['terms' => ['industries' => $include]];
+                            $should[] = ['terms' => ['businessCategories' => $include]];
                             $should[] = ['terms' => ['businessCategory' => $include]];
                             $filterClauses[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
                         }
                         if (!empty($exclude)) {
                             $should = [];
-                            $should[] = ['terms' => ['industry' => $exclude]];
-                            $should[] = ['terms' => ['industries' => $exclude]];
                             $should[] = ['terms' => ['businessCategory' => $exclude]];
+                            $should[] = ['terms' => ['businessCategories' => $exclude]];
                             $mustNot[] = ['bool' => ['should' => $should, 'minimum_should_match' => 1]];
                         }
                     }
@@ -1108,7 +1106,7 @@ class SearchService
                                     'multi_match' => [
                                         'query' => $keyword,
                                         'type' => 'phrase',
-                                        'fields' => ['industry^3', 'industries^3', 'technologies^3', 'keywords^2', 'seoDescription', 'businessDescription'],
+                                        'fields' => ['businessCategory^3', 'businessCategories^3', 'company_business_category^3', 'technologies^3', 'keywords^2', 'seoDescription', 'businessDescription'],
                                     ]
                                 ];
                             }
@@ -1121,7 +1119,7 @@ class SearchService
                                     'multi_match' => [
                                         'query' => $keyword,
                                         'type' => 'phrase',
-                                        'fields' => ['industry', 'industries', 'technologies', 'keywords', 'seoDescription', 'businessDescription'],
+                                        'fields' => ['businessCategory^3', 'businessCategories^3', 'technologies', 'keywords', 'seoDescription', 'businessDescription'],
                                     ]
                                 ];
                             }
