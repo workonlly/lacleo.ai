@@ -17,8 +17,21 @@ export interface FilterDSL {
 }
 
 function resolveBucket(sectionId: string, searchContext: "contacts" | "companies"): "company" | "contact" {
-  if (searchContext === "companies") return "company"
-  return sectionId.startsWith("contact_") ? "contact" : "company"
+  const contactOnlyIds = new Set([
+    "job_title",
+    "seniority",
+    "departments",
+    "years_of_experience",
+    "work_email_exists",
+    "mobile_number_exists",
+    "direct_number_exists",
+    "contact_country",
+    "contact_state",
+    "contact_city"
+  ])
+
+  if (sectionId.startsWith("contact_") || contactOnlyIds.has(sectionId)) return "contact"
+  return "company"
 }
 
 function isRangeValue(v: unknown): v is RangeFilterValue {
@@ -56,13 +69,13 @@ export function serializeToDSL(
       bucket.presence = af.presence
     }
 
-    // Include/Exclude values (IDs/tokens only, use item.name as token)
+    // Include/Exclude values (prefer internal id/token, fallback to name)
     const presenceActive = bucket.presence === "known" || bucket.presence === "unknown"
     if (!presenceActive) {
       const incVals = includeItems
         .filter((i) => !((i.value as RangeFilterValue | undefined)?.min || (i.value as RangeFilterValue | undefined)?.max))
-        .map((i) => String(i.name))
-      const excVals = excludeItems.map((i) => String(i.name))
+        .map((i) => String(i.id ?? i.name))
+      const excVals = excludeItems.map((i) => String(i.id ?? i.name))
       if (incVals.length) bucket.include = incVals
       if (excVals.length) bucket.exclude = excVals
     }

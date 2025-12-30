@@ -3,7 +3,7 @@ import ContactInformation from "@/components/ui/contactinformation"
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import AISearchPage from "@/features/aisearch/AISearchPage"
-import { selectIsAiPanelCollapsed, selectSearchQuery, selectShowResults, startSearch } from "@/features/aisearch/slice/searchslice"
+import { selectIsAiPanelCollapsed, selectSearchQuery, selectShowResults, startSearch, setShowResults } from "@/features/aisearch/slice/searchslice"
 import Filters from "@/features/filters/filterSection"
 import { selectIsCompanyDetailsOpen } from "@/features/searchTable/slice/companyDetailsSlice"
 import {
@@ -34,16 +34,19 @@ const SearchLayout = () => {
   const { hideCompanyActions, hideContactFields } = useSelector(selectContactInfoFlags)
 
   // Local state for sidebar visibility
-  const [isFiltersOpen, setIsFiltersOpen] = useState(true)
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const location = useLocation()
 
-  // Auto-hide filters if navigating from AI Search logic
+  // Auto-show filters if navigating from AI Search logic (so user sees the transition)
   useEffect(() => {
     const s = (location.state as Record<string, unknown> | null) || null
     if (s && "fromAi" in s && Boolean((s as { fromAi?: boolean }).fromAi)) {
-      setIsFiltersOpen(false)
+      setIsFiltersOpen(true)
     }
   }, [location.state])
+
+  // Do NOT auto-show results on route enter; results appear only after Apply
+  // Keep landing AI page until user applies filters
 
   const renderTopControls = () => (
     <div className="my-3 flex items-center justify-between gap-3">
@@ -77,17 +80,19 @@ const SearchLayout = () => {
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => dispatch(startSearch(e.target.value))}
+            // Gate AI: only run on Enter via startSearch
+            defaultValue=""
+            onKeyDown={(e) => {
+              const target = e.target as HTMLInputElement
+              if (e.key === "Enter" && target.value.trim()) {
+                e.preventDefault()
+                dispatch(startSearch(target.value.trim()))
+                target.blur()
+              }
+            }}
             className="h-9 w-[300px] bg-white pl-10 pr-3"
           />
         </div>
-
-        {/* <Button variant="outline" className="h-9 gap-1 border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50">
-          <SortDesc className="size-3.5" />
-          Sort by
-          <ChevronDown className="size-3.5" />
-        </Button> */}
       </div>
     </div>
   )

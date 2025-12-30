@@ -25,10 +25,8 @@ class ElasticSnapshot extends Command
         $repo = $this->option('repo');
         $name = $this->option('name') ?: ('lacleo_'.date('YmdHis'));
         $indices = $this->option('indices') ?: implode(',', array_filter([
-            env('ELASTICSEARCH_CONTACT_INDEX'),
-            env('ELASTICSEARCH_COMPANY_INDEX'),
-            env('ELASTICSEARCH_CONTACT_STATS_INDEX') ?: (env('ELASTICSEARCH_CONTACT_INDEX') ? env('ELASTICSEARCH_CONTACT_INDEX').'_stats' : null),
-            env('ELASTICSEARCH_COMPANY_STATS_INDEX') ?: (env('ELASTICSEARCH_COMPANY_INDEX') ? env('ELASTICSEARCH_COMPANY_INDEX').'_stats' : null),
+            env('ELASTIC_CONTACT_INDEX'),
+            env('ELASTIC_COMPANY_INDEX'),
         ]));
 
         if (! $repo) {

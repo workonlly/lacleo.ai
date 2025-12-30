@@ -18,10 +18,23 @@ export interface NormalizedFilterGroup extends Omit<IFilterGroup, "filters"> {
 export function normalizeFilters(apiGroups: IFilterGroup[]): NormalizedFilterGroup[] {
   return apiGroups.map((group) => ({
     ...group,
-    filters: group.filters.map((f) => ({
-      ...f,
-      range: inferRange(f)
-    }))
+    filters: group.filters.map((f) => {
+      const anyF = f as unknown as {
+        search?: { enabled?: boolean }
+        input?: string
+        filtering?: { supports_exclusion?: boolean }
+      }
+      const searchEnabled = f.is_searchable || anyF.search?.enabled || false
+
+      return {
+        ...f,
+        is_searchable: searchEnabled,
+        supports_value_lookup: f.supports_value_lookup || searchEnabled,
+        input_type: (f.input_type || anyF.input) as IFilter["input_type"],
+        allows_exclusion: f.allows_exclusion || anyF.filtering?.supports_exclusion || false,
+        range: inferRange(f)
+      }
+    })
   }))
 }
 

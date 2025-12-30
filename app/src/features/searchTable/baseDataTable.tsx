@@ -183,6 +183,12 @@ export function DataTable<T>({
                 placeholder={searchPlaceholder}
                 value={searchValue}
                 onChange={(e) => onSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    onSearch(searchValue)
+                  }
+                }}
                 className="h-9 w-[300px] bg-white pl-10 pr-3"
               />
               {!!fetching && <LoadingSpinner size="sm" className="absolute right-3 top-1/2 size-4 -translate-y-1/2" />}

@@ -17,13 +17,11 @@ class ElasticRestore extends Command
         $repo = $this->argument('repo');
         $snapshot = $this->argument('snapshot');
         $suffix = $this->option('suffix') ?? '_restore';
-        $contacts = $this->option('contacts') ?: env('ELASTICSEARCH_CONTACT_INDEX');
-        $companies = $this->option('companies') ?: env('ELASTICSEARCH_COMPANY_INDEX');
-        $contactStats = env('ELASTICSEARCH_CONTACT_STATS_INDEX') ?: ($contacts ? $contacts.'_stats' : null);
-        $companyStats = env('ELASTICSEARCH_COMPANY_STATS_INDEX') ?: ($companies ? $companies.'_stats' : null);
+        $contacts = $this->option('contacts') ?: env('ELASTIC_CONTACT_INDEX');
+        $companies = $this->option('companies') ?: env('ELASTIC_COMPANY_INDEX');
 
         $targets = [];
-        foreach (array_filter([$contacts, $companies, $contactStats, $companyStats]) as $src) {
+        foreach (array_filter([$contacts, $companies]) as $src) {
             $targets[$src] = $src.$suffix;
         }
 

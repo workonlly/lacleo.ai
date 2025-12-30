@@ -1,5 +1,6 @@
 // features/filters/hooks/useFilterSearch.ts
 import { useLazySearchFilterValuesQuery } from "@/features/filters/slice/apiSlice"
+import { sectionToKey } from "@/features/filters/slice/filterSlice"
 import { IFilter } from "@/interface/filters/filterGroup"
 import { IFilterSearchState } from "@/interface/filters/filterValueSearch"
 import { useCallback, useState } from "react"
@@ -16,6 +17,7 @@ export const useFilterSearch = () => {
 
   const handleSearch = useCallback(
     async (filter: IFilter, query: string = "", page: string = "1") => {
+      console.log("🔍 handleSearch called for:", filter.id, "Query:", query, "Searchable:", filter.is_searchable)
       if (filter.is_searchable && !query) return
 
       const filterId = filter.id
@@ -26,8 +28,11 @@ export const useFilterSearch = () => {
       }))
 
       try {
+        // Map frontend ID to backend expected key
+        const apiFilterId = sectionToKey[filterId] || filterId
+
         const response = await triggerSearch({
-          filter: filterId,
+          filter: apiFilterId,
           page,
           count: "10",
           ...(query && { q: query })

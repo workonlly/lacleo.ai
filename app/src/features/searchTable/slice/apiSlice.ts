@@ -80,6 +80,7 @@ const contactsApi = enhancedApi.injectEndpoints({
           summary?: string
           semantic_query?: string | null
           custom?: { label: string; value: string; type: string }[]
+          fallback_mode?: boolean
         },
         {
           query: string

@@ -17,7 +17,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters } from "../filters/slice/filterSlice"
-import { setLastResultCount, selectSemanticQuery, startSearch } from "../aisearch/slice/searchslice"
+import { setLastResultCount, selectSemanticQuery, startSearch, selectShowResults, setSearchQueryOnly } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery } from "./slice/apiSlice"
 import { useCompanyLogoQuery } from "./slice/apiSlice"
@@ -74,7 +74,7 @@ export function CompaniesTable() {
   const handleSearchChange = (val: string) => {
     // Update local state immediately
     setQueryValue(val)
-    dispatch(startSearch(val))
+    dispatch(setSearchQueryOnly(val))
   }
 
   const [sortSelected, setSortSelected] = useState<string[]>([])
@@ -114,12 +114,12 @@ export function CompaniesTable() {
 
   const activeFilters = useAppSelector(selectActiveFilters)
   const semanticQuery = useAppSelector(selectSemanticQuery)
-  const filterDsl = useMemo(() => serializeToDSL(selectedFilters, activeFilters), [selectedFilters, activeFilters])
+  const filterDsl = useMemo(() => serializeToDSL(selectedFilters, activeFilters, "companies"), [selectedFilters, activeFilters])
 
   // Debug: log the DSL being built
   useEffect(() => {
+    console.log("🚀 FINAL DSL BEING SENT:", JSON.stringify(filterDsl, null, 2))
     if (filterDsl && (filterDsl.contact || filterDsl.company)) {
-      console.log("❄️ Filter DSL:", JSON.stringify(filterDsl, null, 2))
       console.log("❄️ Selected Filters Redux:", selectedFilters)
     }
   }, [filterDsl, selectedFilters])
@@ -145,10 +145,17 @@ export function CompaniesTable() {
 
   const searchUrl = useMemo(() => {
     const url = buildSearchUrl(searchParams, queryParams)
-    return url
+    return url.startsWith("?") ? url : "?" + url
   }, [searchParams, queryParams])
 
-  const { data, isLoading, isFetching } = useSearchContactsQuery({ type: "company", buildParams: searchUrl }, { refetchOnMountOrArgChange: true })
+  const showResults = useAppSelector(selectShowResults)
+  const { data, isLoading, isFetching } = useSearchContactsQuery(
+    { type: "company", buildParams: searchUrl },
+    {
+      refetchOnMountOrArgChange: true,
+      skip: !showResults
+    }
+  )
 
   // Derive company_phone for selected companies from the search response
   const companyData = useMemo(() => {

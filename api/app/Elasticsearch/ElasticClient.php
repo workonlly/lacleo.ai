@@ -13,7 +13,6 @@ use InvalidArgumentException;
 class ElasticClient
 {
     protected Client $client;
-
     protected array $config;
 
     protected array $defaultHeaders = [
@@ -22,357 +21,270 @@ class ElasticClient
     ];
 
     /**
-     * Create a new ElasticClient instance.
-     *
-     * @throws Exception If elasticsearch configuration is invalid
+     * Bootstrap Elasticsearch client
      */
     public function __construct()
     {
         $this->config = config('elasticsearch');
+
         $this->validateConfig();
         $this->initializeClient();
+        $this->validateRequiredIndices();
     }
 
-    /**
-     * Validate elasticsearch configuration
-     *
-     * @throws InvalidArgumentException
-     */
+    /* -----------------------------------------------------------------
+     |  CONFIG VALIDATION
+     |------------------------------------------------------------------*/
+
     protected function validateConfig(): void
     {
-        if (empty($this->config['hosts'])) {
-            throw new InvalidArgumentException('Elasticsearch hosts configuration is missing');
+        if (empty($this->config['hosts']) || ! is_array($this->config['hosts'])) {
+            throw new InvalidArgumentException(
+                'Elasticsearch hosts configuration is missing or invalid'
+            );
         }
     }
 
-    /**
-     * Initialize Elasticsearch client
-     */
+    /* -----------------------------------------------------------------
+     |  CLIENT INITIALIZATION
+     |------------------------------------------------------------------*/
+
     protected function initializeClient(): void
     {
-        $builder = ClientBuilder::create()->setHosts($this->config['hosts']);
+        $builder = ClientBuilder::create()
+            ->setHosts($this->config['hosts']);
 
-        // Configure SSL
-        if ($this->config['ssl']['verify'] ?? false) {
-            $builder->setSSLVerification($this->config['ssl']['cafile']);
+        // SSL
+        if (($this->config['ssl']['verify'] ?? false) === true) {
+            $builder->setSSLVerification(
+                $this->config['ssl']['cafile'] ?? null
+            );
         } else {
             $builder->setSSLVerification(false);
         }
 
-        // Configure authentication
-        $apiKey = $this->config['auth']['api_key'] ?? null;
-        $apiKeySecret = $this->config['auth']['api_key_secret'] ?? null;
-        if (! empty($apiKey) && ! empty($apiKeySecret)) {
-            $builder->setApiKey(base64_encode($apiKey.':'.$apiKeySecret));
-        } elseif (! empty($apiKey)) {
-            $builder->setApiKey($apiKey);
+        // Authentication
+        if (! empty($this->config['auth']['api_key'])
+            && ! empty($this->config['auth']['api_key_secret'])
+        ) {
+            $builder->setApiKey(
+                base64_encode(
+                    $this->config['auth']['api_key']
+                    . ':'
+                    . $this->config['auth']['api_key_secret']
+                )
+            );
+        } elseif (! empty($this->config['auth']['api_key'])) {
+            $builder->setApiKey($this->config['auth']['api_key']);
         } elseif (! empty($this->config['auth']['username'])) {
-            // Fallback to basic auth if configured
             $builder->setBasicAuthentication(
                 $this->config['auth']['username'],
                 $this->config['auth']['password'] ?? ''
             );
         }
 
-        // Configure retries
         if (! empty($this->config['retries'])) {
-            $builder->setRetries($this->config['retries']);
+            $builder->setRetries((int) $this->config['retries']);
         }
 
         $this->client = $builder->build();
+    }
 
-        // Safety: block destructive operations in non-local envs unless explicitly allowed
+    /* -----------------------------------------------------------------
+     |  INDEX CONTRACT VALIDATION (FAIL FAST)
+     |------------------------------------------------------------------*/
+
+    protected function validateRequiredIndices(): void
+    {
         try {
-            $env = config('app.env');
-            $allowDestructive = filter_var(env('ELASTIC_ALLOW_DESTRUCTIVE', false), FILTER_VALIDATE_BOOLEAN);
-            $contact = env('ELASTICSEARCH_CONTACT_INDEX');
-            $company = env('ELASTICSEARCH_COMPANY_INDEX');
-            $contactStats = env('ELASTICSEARCH_CONTACT_STATS_INDEX') ?: ($contact ? $contact.'_stats' : null);
-            $companyStats = env('ELASTICSEARCH_COMPANY_STATS_INDEX') ?: ($company ? $company.'_stats' : null);
+            $indices = IndexResolver::all(); // MUST return explicit index names
 
-            // Ensure aliases exist on boot
-            foreach (array_filter([$contact, $company, $contactStats, $companyStats]) as $alias) {
-                if (! $alias) {
-                    continue;
-                }
-                $settings = [];
-                $mapping = [];
-                if ($alias === $contact) {
-                    $m = new \App\Models\Contact;
-                    $settings = $m->elasticSettings();
-                    $mapping = [
-                        'dynamic' => $m->getDynamicMapSetting(),
-                        'properties' => array_merge($m->getMappingProperties(), $m->getAddtionalMappingProperties()),
-                        'dynamic_templates' => $m->getDynamicTemplates(),
-                    ];
-                } elseif ($alias === $company) {
-                    $m = new \App\Models\Company;
-                    $settings = $m->elasticSettings();
-                    $mapping = [
-                        'dynamic' => $m->getDynamicMapSetting(),
-                        'properties' => array_merge($m->getMappingProperties(), $m->getAddtionalMappingProperties()),
-                        'dynamic_templates' => $m->getDynamicTemplates(),
-                    ];
-                }
-                $this->ensureAlias($alias, $settings, $mapping);
-            }
+            foreach ($indices as $index) {
+                $exists = $this->client
+                    ->indices()
+                    ->exists($this->withHeaders(['index' => $index]))
+                    ->asBool();
 
-            // Apply delete-blocks to all indices under aliases in non-local envs
-            if (! $allowDestructive && $env !== 'local') {
-                foreach (array_filter([$contact, $company, $contactStats, $companyStats]) as $alias) {
-                    if (! $alias) {
-                        continue;
-                    }
-                    try {
-                        $aliasMap = $this->client->indices()->getAlias($this->withHeaders(['name' => $alias]))->asArray();
-                        foreach (array_keys($aliasMap) as $index) {
-                            $this->client->indices()->putSettings($this->withHeaders([
-                                'index' => $index,
-                                'body' => ['index' => ['blocks' => ['delete' => true]]],
-                            ]));
-                        }
-                    } catch (Exception $e) {
-                        // If alias missing or API fails, ignore
-                    }
+                if (! $exists) {
+                    Log::channel('elastic')->critical(
+                        'Required Elasticsearch index missing',
+                        ['index' => $index]
+                    );
+
+                    throw new InvalidArgumentException(
+                        "Required Elasticsearch index does not exist: {$index}"
+                    );
                 }
             }
         } catch (Exception $e) {
-            // Ignore safety application errors (e.g., index missing or already immutable)
-            Log::channel('elastic')->warning('Elastic safety apply failed', ['error' => $e->getMessage()]);
+            Log::channel('elastic')->critical(
+                'Elasticsearch startup validation failed',
+                ['error' => $e->getMessage()]
+            );
+
+            throw $e;
         }
     }
 
-    public function ensureAlias(string $alias, array $settings = [], array $mapping = []): void
+    /* -----------------------------------------------------------------
+     |  🚫 HARD BLOCK: ALIAS / INDEX CREATION
+     |------------------------------------------------------------------*/
+
+    public function ensureAlias(string $alias, array $settings = [], array $mapping = []): never
     {
-        // Ensure alias exists by creating a versioned index and attaching alias if missing
-        try {
-            $exists = $this->client->indices()->existsAlias($this->withHeaders(['name' => $alias]))->asBool();
-            if ($exists) {
-                return;
-            }
-        } catch (Exception $e) {
-            // proceed to create when call fails
-        }
-        $suffix = '_v'.date('YmdHis');
-        $index = $alias.$suffix;
-        if (! $this->client->indices()->exists($this->withHeaders(['index' => $index]))->asBool()) {
-            $this->client->indices()->create($this->withHeaders([
-                'index' => $index,
-                'body' => ['settings' => $settings, 'mappings' => $mapping],
-            ]));
-        }
-        $this->client->indices()->updateAliases($this->withHeaders([
-            'body' => ['actions' => [['add' => ['index' => $index, 'alias' => $alias]]]],
-        ]));
+        throw new InvalidArgumentException(
+            'Alias or index auto-creation is disabled by contract'
+        );
     }
 
-    protected function withHeaders(array $params): array
-    {
-        $clientOpts = $params['client'] ?? [];
-        $clientOpts['headers'] = array_merge($clientOpts['headers'] ?? [], $this->defaultHeaders);
-        $params['client'] = $clientOpts;
+    /* -----------------------------------------------------------------
+     |  DOCUMENT OPERATIONS
+     |------------------------------------------------------------------*/
 
-        return $params;
-    }
-
-    /**
-     * Index a document
-     *
-     * @param  array|string  $body
-     * @param  array  $options  Additional indexing options
-     *
-     * @throws Exception
-     */
-    public function indexDocument(string $index, $body, ?string $id = null, array $options = []): array
-    {
-        Log::channel('elastic')->debug('Starting document indexing', [
-            'index' => $index,
-            'id' => $id ?? 'auto-generated',
-            'options' => $options,
-            'document_size' => is_array($body) ? strlen(json_encode($body)) : strlen($body),
-        ]);
+    public function indexDocument(
+        string $index,
+        array|string $body,
+        ?string $id = null,
+        array $options = []
+    ): array {
+        $this->assertIndexExists($index);
 
         try {
-            $params = array_merge([
+            $params = [
                 'index' => $index,
                 'body' => $body,
                 'refresh' => $options['refresh'] ?? true,
-            ], $options);
+            ];
 
             if ($id !== null) {
                 $params['id'] = $id;
             }
 
-            $response = $this->client->index($this->withHeaders($params));
-
-            Log::channel('elastic')->debug('Document indexed successfully', [
-                'index' => $index,
-                'id' => $id ?? 'auto-generated',
-                'result' => $response['result'] ?? 'unknown',
-                'version' => $response['_version'] ?? null,
-            ]);
-
-            return $response->asArray();
-        } catch (ClientResponseException $e) {
-            Log::channel('elastic')->error('Failed to index document: Client error', [
-                'index' => $index,
-                'id' => $id,
-                'error' => $e->getMessage(),
-                'status' => $e->getCode(),
-                'stack_trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
-        } catch (ServerResponseException $e) {
-            Log::channel('elastic')->error('Failed to index document: Server error', [
-                'index' => $index,
-                'id' => $id,
-                'error' => $e->getMessage(),
-                'status' => $e->getCode(),
-                'stack_trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
-        }
-    }
-
-    /**
-     * Get a document by ID
-     *
-     * @param  array  $options  Additional options
-     *
-     * @throws Exception
-     */
-    public function getDocument(string $index, string $id, array $options = []): array
-    {
-        Log::channel('elastic')->debug('Fetching document by id', [
-            'index' => $index,
-            'id' => $id,
-            'options' => $options,
-        ]);
-
-        try {
-            $params = array_merge([
-                'index' => $index,
-                'id' => $id,
-            ], $options);
-
-            $response = $this->client->get($this->withHeaders($params))->asArray();
-
-            Log::channel('elastic')->info('Document retrieved by id successfully', [
-                'index' => $index,
-                'id' => $id,
-                'version' => $response['_version'] ?? null,
-            ]);
+            $response = $this->client->index(
+                $this->withHeaders($params)
+            )->asArray();
 
             return $response;
-        } catch (ClientResponseException $e) {
-            Log::channel('elastic')->error('Failed to get document by id', [
+
+        } catch (ClientResponseException | ServerResponseException $e) {
+            Log::channel('elastic')->error('Indexing failed', [
                 'index' => $index,
                 'id' => $id,
                 'error' => $e->getMessage(),
-                'status' => $e->getCode(),
-                'stack_trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }
     }
 
-    /**
-     * Perform a search query
-     *
-     * @param  array  $params  Search parameters
-     *
-     * @throws Exception
-     */
+    public function getDocument(
+        string $index,
+        string $id,
+        array $options = []
+    ): array {
+        $this->assertIndexExists($index);
+
+        return $this->client->get(
+            $this->withHeaders([
+                'index' => $index,
+                'id' => $id,
+            ])
+        )->asArray();
+    }
+
     public function search(array $params): array
     {
-        Log::channel('elastic')->debug('Executing search query', [
-            'index' => $params['index'] ?? 'all',
-            'query' => json_encode($params['body']) ?? [],
-        ]);
+        $index = $params['index'] ?? null;
+
+        if (! is_string($index)) {
+            throw new InvalidArgumentException('Search requires explicit index');
+        }
+
+        $this->assertIndexExists($index);
 
         try {
-            $response = $this->client->search($this->withHeaders($params))->asArray();
-
-            Log::channel('elastic')->debug('Elastic Response', ['response' => json_encode($response)]);
-
-            Log::channel('elastic')->info('Search completed successfully', [
-                'index' => $params['index'] ?? 'all',
-                'total_hits' => $response['hits']['total']['value'] ?? 0,
-                'max_score' => $response['hits']['max_score'] ?? null,
-                'took' => $response['took'] ?? null,
-            ]);
-
-            return $response;
-        } catch (ClientResponseException $e) {
-            Log::channel('elastic')->error('Search query failed', [
-                'params' => $params,
+            return $this->client
+                ->search($this->withHeaders($params))
+                ->asArray();
+        } catch (ClientResponseException | ServerResponseException $e) {
+            Log::channel('elastic')->error('Search failed', [
+                'index' => $index,
                 'error' => $e->getMessage(),
-                'status' => $e->getCode(),
-                'stack_trace' => $e->getTraceAsString(),
             ]);
-            throw $e;
+
+            return [
+                'hits' => [
+                    'total' => ['value' => 0, 'relation' => 'eq'],
+                    'hits' => [],
+                ],
+                'aggregations' => [],
+                'took' => 0,
+            ];
         }
     }
 
-    /**
-     * Check if the cluster is available
-     */
+    /* -----------------------------------------------------------------
+     |  MAPPING (READ-ONLY)
+     |------------------------------------------------------------------*/
+
+    public function putMapping(string $index, array $mapping): never
+    {
+        throw new InvalidArgumentException(
+            'Runtime mapping updates are disabled. Use offline migrations.'
+        );
+    }
+
+    /* -----------------------------------------------------------------
+     |  HEALTH
+     |------------------------------------------------------------------*/
+
     public function ping(): bool
     {
-        Log::channel('elastic')->debug('Pinging Elasticsearch cluster');
         try {
-            // Use an info call with headers to ensure auth/compat headers are applied
             $this->client->info($this->withHeaders([]))->asArray();
-
             return true;
         } catch (Exception $e) {
-            Log::channel('elastic')->error('Elasticsearch cluster is not responding', [
-                'error' => $e->getMessage(),
-            ]);
-
+            Log::channel('elastic')->error(
+                'Elasticsearch cluster unreachable',
+                ['error' => $e->getMessage()]
+            );
             return false;
         }
     }
 
-    /**
-     * Create or update an index mapping
-     *
-     * @throws Exception
-     */
-    public function putMapping(string $index, array $mapping): array
+    /* -----------------------------------------------------------------
+     |  INTERNAL SAFETY
+     |------------------------------------------------------------------*/
+
+    protected function assertIndexExists(string $index): void
     {
-        Log::channel('elastic')->debug('Updating index mapping', [
-            'index' => $index,
-            'mapping' => $mapping,
-        ]);
+        $exists = $this->client
+            ->indices()
+            ->exists($this->withHeaders(['index' => $index]))
+            ->asBool();
 
-        try {
-            $response = $this->client->indices()->putMapping($this->withHeaders([
-                'index' => $index,
-                'body' => $mapping,
-            ]))->asArray();
-
-            Log::channel('elastic')->info('Mapping updated successfully', [
-                'index' => $index,
-                'acknowledged' => $response['acknowledged'] ?? false,
-            ]);
-
-            return $response;
-
-        } catch (Exception $e) {
-            Log::channel('elastic')->error('Failed to update mapping', [
-                'index' => $index,
-                'error' => $e->getMessage(),
-                'status' => $e->getCode(),
-                'stack_trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
+        if (! $exists) {
+            throw new InvalidArgumentException(
+                "Elasticsearch index does not exist: {$index}"
+            );
         }
     }
 
-    /**
-     * Get the raw Elasticsearch client instance
-     */
+    protected function withHeaders(array $params): array
+    {
+        $client = $params['client'] ?? [];
+        $client['headers'] = array_merge(
+            $client['headers'] ?? [],
+            $this->defaultHeaders
+        );
+
+        $params['client'] = $client;
+        return $params;
+    }
+
+    /* -----------------------------------------------------------------
+     |  RAW CLIENT
+     |------------------------------------------------------------------*/
+
     public function getClient(): Client
     {
         return $this->client;

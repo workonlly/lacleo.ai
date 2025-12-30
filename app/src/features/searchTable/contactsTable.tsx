@@ -22,7 +22,7 @@ import { Eye, Mail, Phone, User2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import DownloadIcon from "../../static/media/icons/download-icon.svg?react"
 import { selectSelectedItems, selectActiveFilters, selectSearchContext } from "../filters/slice/filterSlice"
-import { setLastResultCount, selectSemanticQuery, startSearch } from "../aisearch/slice/searchslice"
+import { setLastResultCount, selectSemanticQuery, selectShowResults, setShowResults } from "../aisearch/slice/searchslice"
 import { DataTable } from "./baseDataTable"
 import { useSearchContactsQuery, useCompanyLogoQuery } from "./slice/apiSlice"
 import { CompanyAttributes } from "@/interface/searchTable/search"
@@ -111,7 +111,6 @@ export function ContactsTable() {
 
   const handleSearchChange = (val: string) => {
     setQueryValue(val)
-    dispatch(startSearch(val))
   }
 
   const [sortSelected, setSortSelected] = useState<string[]>([])
@@ -169,7 +168,11 @@ export function ContactsTable() {
 
   const searchUrl = useMemo(() => buildSearchUrl(searchParams, queryParams), [searchParams, queryParams])
 
-  const { data, isLoading, isFetching } = useSearchContactsQuery({ type: "contact", buildParams: searchUrl }, { refetchOnMountOrArgChange: true })
+  const showResults = useAppSelector(selectShowResults)
+  const { data, isLoading, isFetching } = useSearchContactsQuery(
+    { type: "contact", buildParams: searchUrl },
+    { refetchOnMountOrArgChange: true, skip: !showResults }
+  )
 
   const sortableFields = ["full_name", "website", "title", "linkedin_url", "company"]
 

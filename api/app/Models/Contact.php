@@ -91,13 +91,7 @@ class Contact extends Model
 
     public function elasticIndex(): string
     {
-        $envIndex = env('ELASTICSEARCH_CONTACT_INDEX');
-        if (!empty($envIndex)) {
-            return $envIndex;
-        }
-        $prefix = config('elasticsearch.index_prefix', '');
-
-        return trim($prefix . '_' . strtolower(class_basename($this)), '_');
+        return \App\Elasticsearch\IndexResolver::contacts();
     }
 
     public function elasticReadAlias(): string

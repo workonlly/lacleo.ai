@@ -13,14 +13,10 @@ class EnsureWorkspace
     {
         $user = $request->user();
         if ($user) {
-            try {
-                Workspace::firstOrCreate(
-                    ['owner_user_id' => $user->id],
-                    ['id' => (string) strtolower(Str::ulid()), 'credit_balance' => 0, 'credit_reserved' => 0]
-                );
-            } catch (\Exception $e) {
-                return response()->json(['message' => 'Failed to ensure workspace: ' . $e->getMessage()], 500);
-            }
+            Workspace::firstOrCreate(
+                ['owner_user_id' => $user->id],
+                ['id' => (string) strtolower(Str::ulid()), 'credit_balance' => 0, 'credit_reserved' => 0]
+            );
         }
 
         return $next($request);

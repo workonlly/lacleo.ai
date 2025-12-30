@@ -17,10 +17,8 @@ Artisan::command('elastic:nightly-snapshot', function () {
     }
     $name = 'nightly_'.date('Ymd');
     $indices = implode(',', array_filter([
-        env('ELASTICSEARCH_CONTACT_INDEX'),
-        env('ELASTICSEARCH_COMPANY_INDEX'),
-        env('ELASTICSEARCH_CONTACT_STATS_INDEX') ?: (env('ELASTICSEARCH_CONTACT_INDEX') ? env('ELASTICSEARCH_CONTACT_INDEX').'_stats' : null),
-        env('ELASTICSEARCH_COMPANY_STATS_INDEX') ?: (env('ELASTICSEARCH_COMPANY_INDEX') ? env('ELASTICSEARCH_COMPANY_INDEX').'_stats' : null),
+        env('ELASTIC_CONTACT_INDEX'),
+        env('ELASTIC_COMPANY_INDEX'),
     ]));
     app(\App\Elasticsearch\ElasticClient::class)->getClient()->snapshot()->create([
         'repository' => $repo,

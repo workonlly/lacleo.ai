@@ -51,13 +51,13 @@ return [
 
     'elastic' => [
         'indices' => [
-            'company' => env('ELASTICSEARCH_COMPANY_INDEX', 'local_ollama_company'),
-            'contact' => env('ELASTICSEARCH_CONTACT_INDEX', 'local_ollama_contact'),
+            'company' => env('ELASTIC_COMPANY_INDEX'),
+            'contact' => env('ELASTIC_CONTACT_INDEX'),
         ],
     ],
 
     'ollama' => [
-        'base_url' => env('OLLAMA_BASE_URL', 'http://localhost:11434'),
+        'base_url' => env('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
         'chat_model' => env('OLLAMA_CHAT_MODEL', 'tinyllama'),
         'embedding_model' => env('OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text'),
     ],

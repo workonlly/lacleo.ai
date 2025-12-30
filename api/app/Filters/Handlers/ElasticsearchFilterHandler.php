@@ -155,15 +155,13 @@ class ElasticsearchFilterHandler extends AbstractFilterHandler
             $query->filter($clause);
         }
 
-        $presenceActive = in_array($presence, ['known', 'unknown'], true);
-
-        // Include values (skip when presence is active)
-        if (!$presenceActive && !empty($include)) {
+        // Include values
+        if (!empty($include)) {
             $this->applyInclude($query, $field, $include, $operator);
         }
 
-        // Exclude values (skip when presence is active)
-        if (!$presenceActive && !empty($exclude)) {
+        // Exclude values
+        if (!empty($exclude)) {
             $this->applyExclude($query, $field, $exclude);
         }
 
@@ -175,13 +173,7 @@ class ElasticsearchFilterHandler extends AbstractFilterHandler
         $settings = $this->filter->settings;
         $fieldType = $settings['field_type'] ?? 'text';
         if ($fieldType === 'keyword') {
-            if ($operator === 'or') {
-                $query->filter(['terms' => [$field => $values]]);
-            } else {
-                foreach ($values as $v) {
-                    $query->filter(['term' => [$field => $v]]);
-                }
-            }
+            $query->filter(['terms' => [$field => $values]]);
             return;
         }
         if ($operator === 'or') {

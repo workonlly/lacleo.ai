@@ -15,10 +15,8 @@ class ElasticHealthCheck extends Command
     {
         $client = $elastic->getClient();
         $aliases = [
-            env('ELASTICSEARCH_CONTACT_INDEX'),
-            env('ELASTICSEARCH_COMPANY_INDEX'),
-            env('ELASTICSEARCH_CONTACT_STATS_INDEX') ?: (env('ELASTICSEARCH_CONTACT_INDEX') ? env('ELASTICSEARCH_CONTACT_INDEX').'_stats' : null),
-            env('ELASTICSEARCH_COMPANY_STATS_INDEX') ?: (env('ELASTICSEARCH_COMPANY_INDEX') ? env('ELASTICSEARCH_COMPANY_INDEX').'_stats' : null),
+            env('ELASTIC_CONTACT_INDEX'),
+            env('ELASTIC_COMPANY_INDEX'),
         ];
 
         foreach ($aliases as $alias) {
@@ -42,6 +40,28 @@ class ElasticHealthCheck extends Command
                 } catch (\Exception $e) {
                     $this->line('   * mapping: (error fetching)');
                 }
+            }
+
+            // Also check if the provided name is an index (not alias)
+            try {
+                $isIndex = $client->indices()->exists(['index' => $alias])->asBool();
+                $this->line(' - index exists: '.($isIndex ? 'yes' : 'no'));
+                if ($isIndex) {
+                    $count = $client->count(['index' => $alias])->asArray()['count'] ?? 0;
+                    $this->line("   * index={$alias} count={$count}");
+                    $settings = $client->indices()->getSettings(['index' => $alias])->asArray();
+                    $deleteBlocked = data_get($settings, "{$alias}.settings.index.blocks.delete") === 'true';
+                    $this->line('   * delete-block: '.($deleteBlocked ? 'true' : 'false'));
+                    try {
+                        $mapping = $client->indices()->getMapping(['index' => $alias])->asArray();
+                        $props = data_get($mapping, "{$alias}.mappings.properties");
+                        $this->line('   * properties: '.(is_array($props) ? count($props) : 0));
+                    } catch (\Exception $e) {
+                        $this->line('   * mapping: (error fetching)');
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->line(' - index exists: (error checking)');
             }
         }
 

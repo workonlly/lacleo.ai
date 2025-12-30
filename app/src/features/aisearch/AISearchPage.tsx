@@ -64,10 +64,7 @@ const AISearchPage: React.FC = () => {
       {currentView === "initial" ? (
         <InitialView onSearch={handleSearch} />
       ) : (
-        <AiChatPage
-          initialQuery={searchQuery}
-          onBackToHome={showResults ? undefined : handleBackToHome} // Hide back button when in aside
-        />
+        <AiChatPage initialQuery={showResults ? "" : searchQuery} onBackToHome={showResults ? undefined : handleBackToHome} />
       )}
     </div>
   )

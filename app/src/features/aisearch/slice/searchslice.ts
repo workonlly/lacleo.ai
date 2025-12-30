@@ -62,10 +62,16 @@ const searchSlice = createSlice({
     },
 
     // Search Actions
+    setSearchQueryOnly: (state, action: PayloadAction<string>) => {
+      state.searchQuery = action.payload
+    },
     startSearch: (state, action: PayloadAction<string>) => {
       state.searchQuery = action.payload
       state.currentView = "chat"
       state.isProcessingCriteria = true
+      // Ensure AI view is visible when starting a search
+      state.showResults = false
+      state.isAiPanelCollapsed = false
       // Add to history if not already present
       if (!state.searchHistory.includes(action.payload)) {
         state.searchHistory.push(action.payload)
@@ -105,6 +111,7 @@ export const {
   setCurrentView,
   resetToInitial,
   startSearch,
+  setSearchQueryOnly,
   finishCriteriaProcessing,
   applyCriteria,
   finishSearch,

@@ -151,7 +151,8 @@ const ExportLeads = ({ open, onClose, selectedCount, totalAvailable, selectedIds
     }, 500) // 500ms debounce
 
     return () => clearTimeout(timer)
-  }, [open, selectedIds, emailSelected, phoneSelected, exportCount, estimateExport, type, hasSelectedData, exportMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedIds.join(","), emailSelected, phoneSelected, exportCount, estimateExport, type, hasSelectedData, exportMode])
 
   const handleExport = async () => {
     try {

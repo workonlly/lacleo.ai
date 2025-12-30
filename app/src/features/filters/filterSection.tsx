@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocation } from "react-router-dom"
 import FilterSearchValueResults from "./filterValues"
 import { useGetFiltersQuery } from "./slice/apiSlice"
+import { setShowResults } from "../aisearch/slice/searchslice"
 import SaveFilter from "@/components/ui/modals/savefilter"
 import Checkbox from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -34,6 +35,8 @@ import {
   setFilterPresence
 } from "./slice/filterSlice"
 import { normalizeFilters, NormalizedFilter } from "@/features/filters/adapter/normalizeFilters"
+
+const EMPTY_SELECTED: SelectedFilter[] = []
 
 const FilterTag = ({ item, onRemove }: { item: SelectedFilter; onRemove: () => void }) => (
   <span
@@ -219,7 +222,10 @@ export const Filters = () => {
   }, [normalizedFilterGroups, isPeoplePage])
 
   useEffect(() => {
-    dispatch(resetFilters())
+    const isSearchPage = location.pathname.startsWith("/app/search/")
+    if (!isSearchPage) {
+      dispatch(resetFilters())
+    }
   }, [dispatch, location.pathname])
 
   useEffect(() => {
@@ -247,12 +253,22 @@ export const Filters = () => {
           <div className="flex flex-row gap-2">
             <Button
               className="border border-gray-200 bg-white p-2 text-sm text-gray-600 hover:bg-transparent"
-              onClick={() => dispatch(resetFilters())}
+              onClick={() => {
+                dispatch(resetFilters())
+              }}
             >
               Clear All
             </Button>
             <Button className="border border-gray-200 bg-white p-2 text-sm text-gray-600 hover:bg-transparent" onClick={() => setIsSaveOpen(true)}>
               <Save /> Save filters
+            </Button>
+            <Button
+              className="border border-blue-600 bg-blue-600 p-2 text-sm text-white hover:bg-blue-700"
+              onClick={() => {
+                dispatch(setShowResults(true))
+              }}
+            >
+              Apply
             </Button>
           </div>
         </div>
@@ -300,12 +316,17 @@ export const Filters = () => {
                                 className="relative"
                                 onSubmit={(e) => {
                                   e.preventDefault()
-                                  dispatch(
-                                    addSelectedItem({
-                                      sectionId: filter.id,
-                                      item: { id: searchTerms[filter.id] || "", name: searchTerms[filter.id] || "", type: "include" }
-                                    })
-                                  )
+                                  e.stopPropagation() // Prevents the event from bubbling to parent components
+
+                                  const value = searchTerms[filter.id] || ""
+                                  if (value.trim()) {
+                                    dispatch(
+                                      addSelectedItem({
+                                        sectionId: filter.id,
+                                        item: { id: value, name: value, type: "include" }
+                                      })
+                                    )
+                                  }
                                 }}
                               >
                                 <input
@@ -314,6 +335,21 @@ export const Filters = () => {
                                   placeholder={`Search ${filter.name.toLowerCase()}`}
                                   value={searchTerms[filter.id] || ""}
                                   onChange={(e) => handleSearchChange(filter, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      const val = searchTerms[filter.id]
+                                      if (val) {
+                                        dispatch(
+                                          addSelectedItem({
+                                            sectionId: filter.id,
+                                            item: { id: val, name: val, type: "include" }
+                                          })
+                                        )
+                                      }
+                                    }
+                                  }}
                                 />
                                 <button type="submit">
                                   <CheckCircle className="absolute right-3 top-2.5 size-4 cursor-pointer text-green-400 dark:text-green-500" />
@@ -328,6 +364,23 @@ export const Filters = () => {
                                   placeholder={`Search ${filter.name.toLowerCase()}`}
                                   value={searchTerms[filter.id] || ""}
                                   onChange={(e) => handleSearchChange(filter, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault()
+                                      const val = searchTerms[filter.id]
+                                      if (val && val.trim()) {
+                                        dispatch(
+                                          addSelectedItem({
+                                            sectionId: filter.id,
+                                            item: { id: val, name: val, type: "include" }
+                                          })
+                                        )
+
+                                        // Optional: clear search term after adding
+                                        dispatch(setSearchTerm({ sectionId: filter.id, term: "" }))
+                                      }
+                                    }
+                                  }}
                                 />
                               </div>
                             ) : null}
@@ -343,7 +396,9 @@ export const Filters = () => {
                                     <div className="flex items-center gap-2">
                                       <Select
                                         value={(af[key]?.operator as "and" | "or") || "or"}
-                                        onValueChange={(val) => dispatch(setBucketOperator({ bucket, key, operator: val as "and" | "or" }))}
+                                        onValueChange={(val) => {
+                                          dispatch(setBucketOperator({ bucket, key, operator: val as "and" | "or" }))
+                                        }}
                                       >
                                         <SelectTrigger className="w-40">
                                           <SelectValue placeholder="Operator" />
@@ -360,9 +415,9 @@ export const Filters = () => {
                                     <div className="flex items-center gap-2">
                                       <Select
                                         value={(af[key]?.presence as "any" | "known" | "unknown") || "any"}
-                                        onValueChange={(val) =>
+                                        onValueChange={(val) => {
                                           dispatch(setFilterPresence({ bucket, key, presence: val as "any" | "known" | "unknown" }))
-                                        }
+                                        }}
                                       >
                                         <SelectTrigger className="w-44">
                                           <SelectValue placeholder="Presence" />
@@ -410,6 +465,7 @@ export const Filters = () => {
                                       const min = currentRange?.min?.toString() || ""
                                       const max = e.target.value
                                       handleRangeInputApply(filter.id, min, max)
+                                      // REMOVE auto-dispatch from here
                                     }}
                                   />
                                   <Button variant="outline" onClick={() => handleRangeInputClear(filter.id)}>
@@ -472,7 +528,9 @@ export const Filters = () => {
                                         <FilterTag
                                           key={item.id}
                                           item={item}
-                                          onRemove={() => dispatch(removeSelectedItem({ sectionId: filter.id, itemId: item.id }))}
+                                          onRemove={() => {
+                                            dispatch(removeSelectedItem({ sectionId: filter.id, itemId: item.id }))
+                                          }}
                                         />
                                       ))}
                                     </div>
@@ -493,23 +551,25 @@ export const Filters = () => {
                                             error={err}
                                             selectedItems={s}
                                             canExclude={filter.allows_exclusion}
-                                            onInclude={(item) =>
+                                            onInclude={(item) => {
                                               dispatch(
                                                 addSelectedItem({
                                                   sectionId: filter.id,
                                                   item: { ...item, type: "include" }
                                                 })
                                               )
-                                            }
-                                            onExclude={(item) =>
+                                            }}
+                                            onExclude={(item) => {
                                               dispatch(
                                                 addSelectedItem({
                                                   sectionId: filter.id,
                                                   item: { ...item, type: "exclude" }
                                                 })
                                               )
-                                            }
-                                            onRemove={(item) => dispatch(removeSelectedItem({ sectionId: filter.id, itemId: item.id }))}
+                                            }}
+                                            onRemove={(item) => {
+                                              dispatch(removeSelectedItem({ sectionId: filter.id, itemId: item.id }))
+                                            }}
                                           />
                                         </div>
                                       )
@@ -534,4 +594,3 @@ export const Filters = () => {
 }
 
 export default Filters
-const EMPTY_SELECTED: SelectedFilter[] = []

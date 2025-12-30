@@ -7,8 +7,7 @@ const initialState: FilterState = {
   expandedSections: {},
   searchTerms: {},
   selectedItems: {},
-  // Apollo-style cross-index filtering state
-  searchContext: "contacts", // 'contacts' | 'companies'
+  searchContext: "contacts",
   activeFilters: {
     contact: {},
     company: {}
@@ -19,12 +18,12 @@ const initialState: FilterState = {
 export const sectionToKey: Record<string, string> = {
   // Contact filters (use FilterRegistry IDs)
   job_title: "job_title",
-  departments: "department",
+  departments: "departments", // specific to backend expectations if needed, but registry uses department? Validator maps department -> departments.
   seniority: "seniority",
   years_of_experience: "experience_years",
-  contact_country: "contact_country",
-  contact_state: "contact_state",
-  contact_city: "contact_city",
+  contact_country: "countries",
+  contact_state: "states",
+  contact_city: "cities",
   contact_has_email: "work_email_exists",
   contact_has_phone: "mobile_number_exists",
   // Contact filters that join to company data
@@ -46,9 +45,9 @@ export const sectionToKey: Record<string, string> = {
   industry: "industry",
   company_technologies: "technologies",
   technologies: "technologies",
-  company_country: "company_country",
-  company_state: "company_state",
-  company_city: "company_city",
+  company_country: "countries",
+  company_state: "states",
+  company_city: "cities",
   company_founded_year: "founded_year",
   company_domain: "company_domain",
   company_domain_company: "company_domain",

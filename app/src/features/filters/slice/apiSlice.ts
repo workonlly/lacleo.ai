@@ -13,7 +13,10 @@ const filtersApiSlice = apiSlice.injectEndpoints({
           filters: (group.filters || []).map((f) => {
             const appliesTo = (f as unknown as { applies_to?: string[] }).applies_to || ["company"]
             const filterType = appliesTo.includes("contact") && !appliesTo.includes("company") ? "contact" : "company"
-            return { ...f, filter_type: filterType }
+            // Ensure is_searchable is true if search is enabled in nested object
+            const isSearchable = f.is_searchable || (f as unknown as { search?: { enabled?: boolean } }).search?.enabled || false
+
+            return { ...f, filter_type: filterType, is_searchable: isSearchable }
           })
         }))
       },

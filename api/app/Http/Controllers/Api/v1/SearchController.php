@@ -60,13 +60,11 @@ class SearchController extends Controller
                     $searchParams['variables']['filter_dsl'] ?? [],
                     $searchParams['sort'] ?? []
                 );
-                $indexMap = [
-                    'company' => 'stage_lacleo_company_stats',
-                    'contact' => 'stage_lacleo_contact_stats',
-                ];
                 $results['debug'] = [
                     'params' => $searchParams,
-                    'index_used' => $indexMap[$searchParams['type']] ?? null,
+                    'index_used' => $searchParams['type'] === 'company'
+                        ? \App\Elasticsearch\IndexResolver::companies()
+                        : \App\Elasticsearch\IndexResolver::contacts(),
                     'raw_query' => $built,
                 ];
             }
@@ -259,14 +257,22 @@ class SearchController extends Controller
             'page' => $params['queryParams']['page'] ?? 1,
             'count' => $params['queryParams']['count'] ?? 10,
         ]);
+        $page = max(1, min((int) ($params['queryParams']['page'] ?? 1), 100));
+        $count = max(1, min((int) ($params['queryParams']['count'] ?? 10), 100));
+        $searchTerm = $params['variables']['searchTerm'] ?? null;
+        $dsl = $params['variables']['filter_dsl'] ?? [];
+
+        if (empty($searchTerm) && empty($dsl)) {
+            return $this->searchService->basicSearch($params['type'], $page, $count);
+        }
 
         return $this->searchService->search(
             $params['type'],
-            $params['variables']['searchTerm'] ?? null,
-            $params['variables']['filter_dsl'] ?? [],
+            $searchTerm,
+            $dsl,
             $params['sort'] ?? [],
-            max(1, min((int) ($params['queryParams']['page'] ?? 1), 100)),
-            max(1, min((int) ($params['queryParams']['count'] ?? 10), 100)),
+            $page,
+            $count,
             $params['variables']['semantic_query'] ?? null,
         );
     }

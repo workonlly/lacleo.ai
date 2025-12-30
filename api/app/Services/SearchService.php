@@ -6,6 +6,7 @@ use App\Elasticsearch\ElasticQueryBuilder;
 use App\Filters\FilterManager;
 use App\Models\Company;
 use App\Models\Contact;
+use Elastic\Elasticsearch\Exception\ClientResponseException;
 use App\Utilities\SearchTermParser;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -107,8 +108,7 @@ class SearchService
 
             $this->applySorting($builder, $sorts);
 
-            // Aggregations for filter UIs (industries, locations, size, technologies, has_xx)
-            $this->applyAggregations($builder, $type, $filterDsl);
+            // Temporarily disable aggregations to avoid text-field terms errors in ES
 
             // Return full _source for each ES hit (no source filtering)
 
@@ -129,7 +129,36 @@ class SearchService
             // To properly implement this, we update the search signature in the NEXT step or assume specific usage.
             // For this specific tool call, I will perform the pagination call.
 
-            $results = $builder->paginate($page, $perPage);
+            try {
+                $results = $builder->paginate($page, $perPage);
+            } catch (ClientResponseException $e) {
+                Log::channel('elastic')->warning('Search failed with aggregations, retrying without aggs', [
+                    'error' => $e->getMessage(),
+                    'type' => $type,
+                ]);
+                // Retry without aggregations to avoid mapping-related agg failures
+                $builderNoAgg = $modelClass::elastic();
+                $builderNoAgg->index($index);
+                if (isset($filterDsl['contact']) || isset($filterDsl['company'])) {
+                    $contactFilters = is_array($filterDsl['contact'] ?? null) ? $filterDsl['contact'] : [];
+                    $companyFilters = is_array($filterDsl['company'] ?? null) ? $filterDsl['company'] : [];
+                    if ($type === 'contact') {
+                        if (!empty($contactFilters)) {
+                            $this->filterManager->applyFilters($builderNoAgg, $contactFilters, 'contact');
+                        }
+                        if (!empty($companyFilters)) {
+                            $this->filterManager->applyFilters($builderNoAgg, $companyFilters, 'company');
+                        }
+                    } else {
+                        if (!empty($companyFilters)) {
+                            $this->filterManager->applyFilters($builderNoAgg, $companyFilters, 'company');
+                        }
+                    }
+                }
+                $this->applySearchQuery($builderNoAgg, $type, $modelClass::globalSearchFields(), $query);
+                $this->applySorting($builderNoAgg, $sorts);
+                $results = $builderNoAgg->paginate($page, $perPage);
+            }
 
             return $this->formatResults($results, $type, $filterDsl);
         } catch (Exception $e) {
@@ -141,6 +170,16 @@ class SearchService
 
             throw $e;
         }
+    }
+
+    public function basicSearch(string $type, int $page = 1, int $perPage = 10): array
+    {
+        $modelClass = $this->getModelClass($type);
+        $builder = $modelClass::elastic();
+        $index = (new $modelClass())->getReadAlias();
+        $builder->index($index);
+        $results = $builder->paginate($page, max(1, min(100, $perPage)));
+        return $this->formatResults($results, $type, []);
     }
 
     /**
@@ -626,16 +665,6 @@ class SearchService
         }
 
         $this->addGeneralSearch($builder, $searchConfig, $query);
-        $highlightFields = array_unique(array_merge(
-            array_keys($searchConfig['exact_fields'] ?? []),
-            array_keys($searchConfig['phrase_fields'] ?? []),
-            array_keys($searchConfig['prefix_fields'] ?? []),
-            array_keys($searchConfig['ngram_fields'] ?? []),
-            array_keys($searchConfig['text_fields'] ?? [])
-        ));
-        if (!empty($highlightFields)) {
-            $builder->highlight($highlightFields);
-        }
     }
 
     protected function isDomainLike(string $query): bool
@@ -741,24 +770,13 @@ class SearchService
     {
         $shouldClauses = [];
 
-        // 1. Exact Matches (Highest Priority)
         $this->addExactMatches($shouldClauses, $searchConfig['exact_fields'], $query);
-        // 2. Phrase Matches (High Priority)
         $this->addPhraseMatches($shouldClauses, $searchConfig['phrase_fields'], $query);
-        // 3. Prefix Matches (Medium Priority)
-        $this->addPrefixMatches($shouldClauses, $searchConfig['prefix_fields'], $query);
-        // 4. NGram Matches (For partial matching)
-        $this->addNGramMatches($shouldClauses, $searchConfig['ngram_fields'], $query);
-        // 5. Fuzzy Full-text Search (Lower Priority)
-        $this->addFuzzyMatches($shouldClauses, $searchConfig['text_fields'], $query);
 
-        $builder->should([
-            'bool' => [
-                'should' => $shouldClauses,
-                'minimum_should_match' => 1,
-            ],
-        ]);
-
+        foreach ($shouldClauses as $clause) {
+            $builder->should($clause);
+        }
+        $builder->setBoolParam('minimum_should_match', 1);
         $builder->minScore(0.1);
     }
 
